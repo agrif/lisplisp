@@ -3,14 +3,8 @@ import os
 
 from lisp.parser import parse
 from lisp.scope import Scope
-from lisp.types import Procedure
+from lisp.builtins import register as register_builtins
 from lisp.eval import eval, EvalException
-
-class QuoteProcedure(Procedure):
-    def __init__(self):
-        Procedure.__init__(self, 'quote')
-    def call(self, scope, args):
-        return args.car
 
 def entry_point(argv):
     try:
@@ -29,7 +23,7 @@ def entry_point(argv):
     os.close(fd)
     
     scope = Scope()
-    scope.set('quote', QuoteProcedure())
+    register_builtins(scope)
     
     sexp = parse(data)
     while sexp:
