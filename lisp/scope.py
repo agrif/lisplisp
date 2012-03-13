@@ -9,7 +9,7 @@ class Scope(object):
         self.current = {}
 
     def push(self):
-        self.stack.push(self.current)
+        self.stack.append(self.current)
         self.current = self.current.copy()
     def pop(self):
         try:

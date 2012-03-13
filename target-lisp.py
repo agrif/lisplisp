@@ -4,7 +4,7 @@ import os
 from lisp.parser import parse
 from lisp.scope import Scope
 from lisp.types import Procedure
-from lisp.eval import eval
+from lisp.eval import eval, EvalException
 
 class QuoteProcedure(Procedure):
     def __init__(self):
@@ -37,7 +37,11 @@ def entry_point(argv):
             print "nil"
         else:
             print sexp.car.unparse()
-        res = eval(scope, sexp.car)
+        try:
+            res = eval(scope, sexp.car)
+        except EvalException, e:
+            e.pretty_print()
+            return 1
         if res is None:
             print ">> nil"
         else:
