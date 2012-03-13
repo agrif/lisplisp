@@ -1,8 +1,11 @@
 IGNORE: "[ \n\r\t]+|;[^\n]*\n";
 PREFIX: "`|'|,@|,";
-SYMBOL: "[A-Za-z+-_*<>\"&0-9]+";
+
+SYMBOL: "[^\"\.`',; \n\r\t\(\)\[\]]+";
+STRING: "\"([^\"]|\\\")*\"";
+
 valuelist: value valuelist | value;
-value: <prefixed> | <SYMBOL> | <nil> | ["("] <cell> [")"];
+value: <prefixed> | <SYMBOL> | <STRING> | <nil> | ["("] <cell> [")"] | ["["] <cell> ["]"];
 prefixed: PREFIX value;
 cell: value cell | value ["."] value | value;
 nil: ["(" ")"] | "nil";

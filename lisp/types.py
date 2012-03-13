@@ -1,6 +1,4 @@
 class LispType(object):
-    def get_type(self):
-        raise NotImplementedError("get_type")
     def unparse(self):
         raise NotImplementedError("unparse")
 
@@ -28,3 +26,9 @@ class Symbol(LispType):
         self.name = name
     def unparse(self):
         return self.name
+
+class String(LispType):
+    def __init__(self, data):
+        self.data = data
+    def unparse(self):
+        return self.data
