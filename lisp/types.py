@@ -2,6 +2,9 @@ class LispType(object):
     def unparse(self):
         raise NotImplementedError("unparse")
 
+class InvalidValue(Exception):
+    pass
+
 class Cell(LispType):
     def __init__(self, car, cdr=None):
         self.car = car
@@ -21,8 +24,13 @@ class Cell(LispType):
     def unparse(self):
         return "(" + self._unparse_internal() + ")"
 
+_symbol_disallowed = "\".`',; \n\r\t()[]";
+
 class Symbol(LispType):
     def __init__(self, name):
+        for c in name:
+            if c in _symbol_disallowed:
+                raise InvalidValue("character not allowed in symbols: '%s'" % (c,))
         self.name = name
     def unparse(self):
         return self.name
