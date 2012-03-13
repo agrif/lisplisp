@@ -2,6 +2,15 @@ import sys
 import os
 
 from lisp.parser import parse
+from lisp.scope import Scope
+from lisp.types import Procedure
+from lisp.eval import eval
+
+class QuoteProcedure(Procedure):
+    def __init__(self):
+        Procedure.__init__(self, 'quote')
+    def call(self, scope, args):
+        return args.car
 
 def entry_point(argv):
     try:
@@ -19,12 +28,20 @@ def entry_point(argv):
         data += data_append
     os.close(fd)
     
+    scope = Scope()
+    scope.set('quote', QuoteProcedure())
+    
     sexp = parse(data)
     while sexp:
         if sexp.car is None:
             print "nil"
         else:
             print sexp.car.unparse()
+        res = eval(scope, sexp.car)
+        if res is None:
+            print ">> nil"
+        else:
+            print ">>", res.unparse()
         sexp = sexp.cdr
     return 0
 

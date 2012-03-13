@@ -40,3 +40,11 @@ class String(LispType):
         self.data = data
     def unparse(self):
         return self.data
+
+class Procedure(LispType):
+    def __init__(self, name="f"):
+        self.name = name
+    def unparse(self):
+        return "#<procedure #%s>" % (self.name,)
+    def call(self, scope, args):
+        raise NotImplementedError('call')
