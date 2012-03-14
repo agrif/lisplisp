@@ -4,7 +4,7 @@ from pypy.rlib.parsing.parsing import ParseError, Rule
 import os
 import os.path
 
-from .types import Cell, Symbol, String
+from .types import Cell, Symbol, String, Integer, Float
 
 BNF_RULES_FILE = os.path.join(os.path.dirname(__file__), 'grammar.txt')
 
@@ -62,6 +62,10 @@ def ast_to_types(ast):
             return Cell(ast_to_types(ast.children[0]))
         else:
             raise RuntimeError("too many children for 'valuelist' AST")
+    elif symbol == 'INTEGER':
+        return Integer(int(ast.additional_info))
+    elif symbol == 'FLOAT':
+        return Float(float(ast.additional_info))
     elif symbol == 'SYMBOL':
         return Symbol(ast.additional_info)
     elif symbol == 'STRING':

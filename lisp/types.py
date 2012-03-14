@@ -33,6 +33,26 @@ class Cell(LispType):
             sexp = sexp.cdr
         return ret
 
+class Number(LispType):
+    def get_float(self):
+        raise NotImplementedError('get_float')
+
+class Integer(Number):
+    def __init__(self, val):
+        self.value = val
+    def get_float(self):
+        return float(self.value)
+    def unparse(self):
+        return str(self.value)
+
+class Float(Number):
+    def __init__(self, val):
+        self.value = val
+    def get_float(self):
+        return self.value
+    def unparse(self):
+        return str(self.value)
+
 _symbol_disallowed = "\".`',; \n\r\t()[]";
 
 class Symbol(LispType):

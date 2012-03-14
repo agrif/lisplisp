@@ -2,6 +2,7 @@ from .procedure import register as register_procedures
 from ..types import Symbol
 
 import core
+import math
 
 def register(scope):
     # idempotent symbols
