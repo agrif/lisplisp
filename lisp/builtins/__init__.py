@@ -1,4 +1,3 @@
-from .core import register as register_core
+from .procedure import register
 
-def register(scope):
-    register_core(scope)
+import core

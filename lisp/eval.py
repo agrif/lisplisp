@@ -38,7 +38,8 @@ def eval(scope, sexp):
             except EvalException, e:
                 raise e.propogate(sexp)
             except Exception, e:
-                raise EvalException("An unknown error occurred.", sexp)
+                raise
+                #raise EvalException("An unknown error occurred.", sexp)
         # raise an eval exception
         e = EvalException("value does not evaluate to a procedure", function)
         raise e.propogate(sexp)
