@@ -8,10 +8,9 @@
 (setq gather 0)
 
 ;; helper
-(setq get-term
-	  (lambda (i)
-		(* (/ 4 (+ 1 (* 2 i)))
-		   (if (integer-p (/ i 2)) 1 -1))))
+(defun get-term (i)
+  (* (/ 4 (+ 1 (* 2 i)))
+	 (if (integer-p (/ i 2)) 1 -1)))
 
 ;; calculation loop
 (while (nil-p (eq counter max-count))

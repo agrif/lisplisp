@@ -6,14 +6,8 @@ from lisp.scope import Scope
 from lisp.builtins import register as register_builtins
 from lisp.eval import eval, EvalException
 
-def entry_point(argv):
-    try:
-        filename = argv[1]
-    except IndexError:
-        print "You must supply a filename."
-        return 1
-    
-    fd = os.open(filename, os.O_RDONLY, 0777)
+def evaluate_file(scope, fname, quiet=False):
+    fd = os.open(fname, os.O_RDONLY, 0777)
     data = ""
     while True:
         data_append = os.read(fd, 4096)
@@ -22,25 +16,39 @@ def entry_point(argv):
         data += data_append
     os.close(fd)
     
+    sexp = parse(data)
+    while sexp:
+        if not quiet:
+            if sexp.car is None:
+                print "<< nil"
+            else:
+                print "<<", sexp.car.unparse()
+        res = eval(scope, sexp.car)
+        if not quiet:
+            if res is None:
+                print ">> nil"
+            else:
+                print ">>", res.unparse()
+        sexp = sexp.cdr
+
+def entry_point(argv):
+    try:
+        filenames = argv[1:]
+    except IndexError:
+        print "You must supply a filename."
+        return 1
+    
     scope = Scope()
     register_builtins(scope)
     
-    sexp = parse(data)
-    while sexp:
-        if sexp.car is None:
-            print "nil"
-        else:
-            print sexp.car.unparse()
-        try:
-            res = eval(scope, sexp.car)
-        except EvalException, e:
-            e.pretty_print()
-            return 1
-        if res is None:
-            print ">> nil"
-        else:
-            print ">>", res.unparse()
-        sexp = sexp.cdr
+    try:
+        for i in range(len(filenames)):
+            quiet = (i < len(filenames) - 1)
+            evaluate_file(scope, filenames[i], quiet)
+    except EvalException, e:
+        e.pretty_print()
+        return 1
+    
     return 0
 
 def jitpolicy(driver):
