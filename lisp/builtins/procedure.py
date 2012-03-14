@@ -1,5 +1,5 @@
-from ..types import Procedure, Cell
-from ..eval import EvalException
+from ..types import InvalidValue, Procedure, Cell, Symbol
+from ..eval import EvalException, eval
 
 procedures = []
 
@@ -62,3 +62,110 @@ def parse_arguments(args, num_required, num_optional=0, use_rest=False):
         raise EvalException(errorstr)
     
     return (required, optional, rest)
+
+class LambdaProcedure(Procedure):
+    def __init__(self, required, optional, rest, body, eval_args=True, eval_return=False):
+        self.required = required
+        self.optional = optional
+        self.rest = rest
+        self.body = body
+        
+        self.eval_args = eval_args
+        self.eval_return = eval_return
+        
+        Procedure.__init__(self, 'nil')
+    def call(self, scope, args):
+        reqvals, optvals, restvals = parse_arguments(args, len(self.required), len(self.optional), self.rest is not None)
+        restvals.reverse()
+        newscope = {}
+        
+        for i in range(len(self.required)):
+            if self.eval_args:
+                tmp = eval(scope, reqvals[i])
+            else:
+                tmp = reqvals[i]
+            newscope[self.required[i]] = tmp
+        for i in range(len(self.optional)):
+            if i < len(optvals):
+                if self.eval_args:
+                    tmp = eval(scope, optvals[i])
+                else:
+                    tmp = optvals[i]
+                newscope[self.optional[i]] = tmp
+            else:
+                newscope[self.optional[i]] = None
+        rest_cell = None
+        for sexp in restvals:
+            if self.eval_args:
+                tmp = eval(scope, sexp)
+            else:
+                tmp = sexp
+            rest_cell = Cell(tmp, rest_cell)
+        if self.rest is not None:
+            newscope[self.rest] = rest_cell
+        
+        scope.push()
+        try:
+            for name, value in newscope.items():
+                scope.set(name, value)
+            ret = None
+            for sexp in self.body:
+                ret = eval(scope, sexp)
+        finally:
+            scope.pop()
+        
+        if self.eval_return:
+            return eval(scope, ret)
+        return ret
+
+def _l_lambda_macro(scope, args, eval_args, eval_return):
+    req, _, rest = parse_arguments(args, 1, 0, True)
+    if not isinstance(req[0], Cell):
+        raise EvalException("not a valid argument list")
+    try:
+        argnames = req[0].to_list()
+    except InvalidValue:
+        raise EvalException("not a valid argument list")
+    
+    phase = 0
+    required = []
+    optional = []
+    restname = None
+    
+    for sexp in argnames:
+        if not isinstance(sexp, Symbol):
+            raise EvalException("not a valid binding name", sexp)
+        name = sexp.name
+        
+        if name == "&optional":
+            if phase == 1:
+                raise EvalException("&optional may only appear once")
+            if phase == 2:
+                raise EvalException("&optional must appear before &rest")
+            phase = 1
+            continue
+        elif name == "&rest":
+            if phase == 2:
+                raise EvalException("&rest may only appear once")
+            phase = 2
+            continue
+        
+        if phase == 3 and restname is not None:
+            raise EvalException("there may be only one &rest binding")
+        
+        if phase == 0:
+            required.append(name)
+        elif phase == 1:
+            optional.append(name)
+        else:
+            restname = name
+        
+    return LambdaProcedure(required, optional, restname, rest, eval_args, eval_return)
+
+@procedure('lambda')
+def l_lambda(scope, args):
+    return _l_lambda_macro(scope, args, True, False)
+
+@procedure('macro')
+def l_lambda(scope, args):
+    return _l_lambda_macro(scope, args, False, True)

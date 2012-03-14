@@ -7,13 +7,18 @@
 (setq counter 0)
 (setq gather 0)
 
+;; helper
+(setq get-term
+	  (lambda (i)
+		(* (/ 4 (+ 1 (* 2 i)))
+		   (if (integer-p (/ i 2)) 1 -1))))
+
+;; calculation loop
 (while (nil-p (eq counter max-count))
-  (setq gather
-		(+ gather (*
-				   (/ 4 (+ 1 (* 2 counter)))
-				   (if (integer-p (/ counter 2)) 1 -1))))
+  (setq gather (+ gather (get-term counter)))
   (setq counter (+ 1 counter))
   (if (integer-p (/ counter notify))
 	  nil))
 
+;; print the result
 gather
