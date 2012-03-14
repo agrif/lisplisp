@@ -1,5 +1,5 @@
 from .procedure import procedure, parse_arguments
-from ..types import Symbol
+from ..types import InvalidValue, Symbol, Cell
 from ..eval import EvalException, eval
 from ..scope import NameNotSet
 
@@ -58,3 +58,41 @@ def l_set_p(scope, args):
     except NameNotSet:
         return None
     return Symbol('t')
+
+@procedure('let')
+def l_let(scope, args):
+    req, _, rest = parse_arguments(args, 1, 0, True)
+    if not isinstance(req[0], Cell):
+        raise EvalException("let bindings are not a list")
+    try:
+        bindings = req[0].to_list()
+    except InvalidValue:
+        raise EvalException("let bindings are not a list")
+    
+    bindings_cached = {}
+    for binding in bindings:
+        orig_binding = binding
+        if not isinstance(binding, Cell):
+            raise EvalException("let binding is not a 2-list", orig_binding)
+        symbol = binding.car
+        binding = binding.cdr
+        if not isinstance(symbol, Symbol):
+            raise EvalException("let binding name is not a symbol", orig_binding)
+        if not isinstance(binding, Cell):
+            raise EvalException("let binding is not a 2-list", orig_binding)
+        value = binding.car
+        if binding.cdr is not None:
+            raise EvalException("let binding is not a 2-list", orig_binding)
+        value = eval(scope, value)
+        bindings_cached[symbol.name] = value
+    
+    ret = None
+    scope.push()
+    try:
+        for name, val in bindings_cached.items():
+            scope.set(name, val)
+        for sexp in rest:
+            ret = eval(scope, sexp)
+    finally:
+        scope.pop()
+    return ret

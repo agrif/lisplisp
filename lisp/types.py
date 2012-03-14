@@ -23,6 +23,15 @@ class Cell(LispType):
         return gather
     def unparse(self):
         return "(" + self._unparse_internal() + ")"
+    def to_list(self):
+        ret = []
+        sexp = self
+        while sexp is not None:
+            if not isinstance(sexp, Cell):
+                raise InvalidValue("cell is not a list")
+            ret.append(sexp.car)
+            sexp = sexp.cdr
+        return ret
 
 _symbol_disallowed = "\".`',; \n\r\t()[]";
 
