@@ -28,6 +28,29 @@ def l_nil_p(scope, args):
         return Symbol('t')
     return None
 
+@procedure('cons')
+def l_cons(scope, args):
+    req, _, _ = parse_arguments(args, 2)
+    val1 = eval(scope, req[0])
+    val2 = eval(scope, req[1])
+    return Cell(val1, val2)
+
+@procedure('car')
+def l_car(scope, args):
+    req, _, _ = parse_arguments(args, 1)
+    val = eval(scope, req[0])
+    if not isinstance(val, Cell):
+        raise EvalException("value not a cell", req[0])
+    return val.car
+
+@procedure('cdr')
+def l_cdr(scope, args):
+    req, _, _ = parse_arguments(args, 1)
+    val = eval(scope, req[0])
+    if not isinstance(val, Cell):
+        raise EvalException("value not a cell", req[0])
+    return val.cdr
+
 @procedure('eq')
 def l_eq(scope, args):
     req, _, _ = parse_arguments(args, 2)
