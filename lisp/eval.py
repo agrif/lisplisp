@@ -29,7 +29,10 @@ class EvalException(Exception):
 
 def eval(scope, sexp):
     if isinstance(sexp, Cell):
-        function = eval(scope, sexp.car)
+        try:
+            function = eval(scope, sexp.car)
+        except EvalException, e:
+            raise e.propogate(sexp)
         args = sexp.cdr
         # call function with args
         if isinstance(function, Procedure):

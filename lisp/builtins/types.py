@@ -27,3 +27,12 @@ def l_nil_p(scope, args):
     if val is None:
         return Symbol('t')
     return None
+
+@procedure('eq')
+def l_eq(scope, args):
+    req, _, _ = parse_arguments(args, 2)
+    val1 = eval(scope, req[0])
+    val2 = eval(scope, req[1])
+    if val1.eq(val2):
+        return Symbol('t')
+    return None

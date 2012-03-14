@@ -1,6 +1,8 @@
 class LispType(object):
     def unparse(self):
         raise NotImplementedError("unparse")
+    def eq(self, other):
+        raise NotImplementedError("eq")
 
 class InvalidValue(Exception):
     pass
@@ -23,6 +25,18 @@ class Cell(LispType):
         return gather
     def unparse(self):
         return "(" + self._unparse_internal() + ")"
+    def eq(self, other):
+        if not isinstance(other, Cell):
+            return False
+        if self.car is None and other.car is None:
+            return True
+        if self.car is not None and self.car.eq(other.car):
+            return True
+        if self.cdr is None and other.cdr is None:
+            return True
+        if self.cdr is not None and self.cdr.eq(other.cdr):
+            return True
+        return False
     def to_list(self):
         ret = []
         sexp = self
@@ -44,6 +58,10 @@ class Integer(Number):
         return float(self.value)
     def unparse(self):
         return str(self.value)
+    def eq(self, other):
+        if not isinstance(other, Integer):
+            return False
+        return self.value == other.value
 
 class Float(Number):
     def __init__(self, val):
@@ -52,6 +70,10 @@ class Float(Number):
         return self.value
     def unparse(self):
         return str(self.value)
+    def eq(self, other):
+        if not isinstance(other, Float):
+            return False
+        return self.value == other.value
 
 _symbol_disallowed = "\".`',; \n\r\t()[]";
 
@@ -63,12 +85,20 @@ class Symbol(LispType):
         self.name = name
     def unparse(self):
         return self.name
+    def eq(self, other):
+        if not isinstance(other, Symbol):
+            return False
+        return self.name == other.name
 
 class String(LispType):
     def __init__(self, data):
         self.data = data
     def unparse(self):
         return self.data
+    def eq(self, other):
+        if not isinstance(other, String):
+            return False
+        return self.data == other.data
 
 class Procedure(LispType):
     def __init__(self, name="f"):
@@ -77,3 +107,7 @@ class Procedure(LispType):
         return "#<procedure #%s>" % (self.name,)
     def call(self, scope, args):
         raise NotImplementedError('call')
+    def eq(self, other):
+        if not isinstance(other, Procedure):
+            return False
+        return self == other
