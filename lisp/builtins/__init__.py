@@ -3,6 +3,7 @@ from ..types import Symbol
 
 import core
 import math
+import types
 
 def register(scope):
     # idempotent symbols
