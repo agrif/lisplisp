@@ -1,7 +1,8 @@
 from .procedure import procedure, parse_arguments
-from ..types import InvalidValue, Symbol, Cell
+from ..types import InvalidValue, Symbol, Cell, String
 from ..eval import EvalException, eval
 from ..scope import NameNotSet
+from ..parser import parse
 
 @procedure('quote')
 def l_quote(scope, args):
@@ -96,3 +97,30 @@ def l_let(scope, args):
     finally:
         scope.pop()
     return ret
+
+@procedure('throw')
+def l_throw(scope, args):
+    req, _, _ = parse_arguments(args, 1)
+    error = eval(scope, req[0])
+    if not isinstance(error, String):
+        raise EvalException("error is not a string")
+    raise EvalException(error.data)
+
+@procedure('parse')
+def l_parse(scope, args):
+    req, _, _ = parse_arguments(args, 1)
+    s = eval(scope, req[0])
+    if not isinstance(s, String):
+        raise EvalException("argument is not a string")
+    parsed = parse(s.data)
+    if isinstance(parsed, Cell) and parsed.cdr is None:
+        return parsed.car
+    return parsed
+
+@procedure('unparse')
+def l_unparse(scope, args):
+    req, _, _ = parse_arguments(args, 1)
+    val = eval(scope, req[0])
+    if val is None:
+        return String('nil')
+    return String(val.unparse())
