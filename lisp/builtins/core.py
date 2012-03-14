@@ -124,3 +124,23 @@ def l_unparse(scope, args):
     if val is None:
         return String('nil')
     return String(val.unparse())
+
+@procedure('if')
+def l_if(scope, args):
+    req, _, rest = parse_arguments(args, 2, 0, True)
+    testval = eval(scope, req[0])
+    if testval is not None:
+        return eval(scope, req[1])
+    ret = None
+    for sexp in rest:
+        ret = eval(scope, sexp)
+    return ret
+
+@procedure('while')
+def l_while(scope, args):
+    req, _, rest = parse_arguments(args, 1, 0, True)
+    test = req[0]
+    while eval(scope, test) is not None:
+        for sexp in rest:
+            eval(scope, sexp)
+    return None
