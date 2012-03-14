@@ -20,4 +20,5 @@
 	  nil))
 
 ;; print the result
-gather
+`(calculated pi: ,gather)
+`(in ,max-count terms)

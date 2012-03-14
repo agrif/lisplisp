@@ -27,3 +27,16 @@
   (cdr (car cell)))
 (defun cddr(cell)
   (cdr (cdr cell)))
+
+;; an implementation of quasiquote
+;; doesn't support splicing or nesting
+
+(defun expand-unquotes (el)
+  (if (cell-p el)
+	  (if (eq (car el) 'unquote)
+		  (eval (cadr el))
+		(cons (expand-unquotes (car el)) (expand-unquotes (cdr el))))
+	el))
+
+(defmacro quasiquote (arg)
+  (list 'quote (expand-unquotes arg)))
