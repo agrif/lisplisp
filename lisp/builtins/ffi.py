@@ -7,27 +7,67 @@ from pypy.rpython.lltypesystem import rffi, lltype
 from pypy.rlib.rdynload import DLOpenError
 
 class FFIType(object):
-    def __init__(self, name, type, lisp_type, to_ffi, call_to_lisp):
-        self.name = name
-        self.type = type
-        if type == rffi.VOIDP:
-            self.ffi_type = ffi.ffi_type_pointer
-        else:
-            self.ffi_type = ffi.cast_type_to_ffitype(type)
-        self.lisp_type = lisp_type
-        self.to_ffi = to_ffi
-        self.call_to_lisp = call_to_lisp
+    name = "void"
+    type = lltype.Void
+    ffi_type = ffi.ffi_type_void
+    lisp_type = None
+    
+    def check_lisp_type(self, obj):
+        if not isinstance(obj, self.lisp_type):
+            return False
+        return True
+    
+    def push_arg(self, func, val):
+        #func.push_arg(val)
+        raise NotImplementedError("push_arg")
+    def free_arg(self):
+        pass
+    def call(self, func):
+        func.call(lltype.Void)
+        return None
+    
+class IntType(FFIType):
+    name = 'int'
+    type = rffi.INT
+    ffi_type = ffi.ffi_type_sint
+    lisp_type = Integer
+    def push_arg(self, func, val):
+        assert isinstance(val, Integer)
+        func.push_arg(val.value)
+    def call(self, func):
+        return Integer(int(func.call(rffi.INT)))
+class DoubleType(FFIType):
+    name = 'double'
+    type = rffi.DOUBLE
+    ffi_type = ffi.ffi_type_double
+    lisp_type = Float
+    def push_arg(self, func, val):
+        assert isinstance(val, Float)
+        func.push_arg(val.value)
+    def call(self, func):
+        return Float(float(func.call(rffi.DOUBLE)))
+class StringType(FFIType):
+    name = 'char*'
+    type = rffi.CCHARP
+    ffi_type = ffi.ffi_type_pointer
+    lisp_type = String
+    def push_arg(self, func, val):
+        assert isinstance(val, String)
+        self.charp = rffi.str2charp(val.data)
+        func.push_arg(self.charp)
+    def free_arg(self):
+        lltype.free(self.charp, flavor='raw')
 
 typelist = [
-    ('void', lltype.Void, None, None, None),
-    ('int', rffi.INT, None, None, None),
-    ('double', rffi.DOUBLE, Float, lambda v: v.value, lambda f: Float(f.call(rffi.DOUBLE))),
-    ('char*', rffi.VOIDP, None, None, None),
+    FFIType,
+    IntType,
+    DoubleType,
+    StringType,
 ]
 
 symbol_to_type = {}
 for el in typelist:
-    symbol_to_type[el[0]] = FFIType(*el)
+    symbol_to_type[el.name] = el
 
 class FFIProcedure(Procedure):
     def __init__(self, lib, func, name, argtypes, restype):
@@ -39,24 +79,25 @@ class FFIProcedure(Procedure):
     def call(self, scope, args):
         req, _, _ = parse_arguments(args, len(self.argtypes))
 
-        if self.restype.call_to_lisp is None:
-            raise NotImplementedError("unhandled type: " + self.restype.name)
-
         i = 0
+        to_free = []
         while i < len(self.argtypes):
             sexp = req[i]
-            typ = self.argtypes[i]
+            typ = self.argtypes[i]()
             val = eval(scope, sexp)
-            if typ.lisp_type is None or typ.to_ffi is None:
+            if not typ.check_lisp_type(val):
                 self.ffi_func._clean_args()
-                raise NotImplementedError("unhandled type: " + typ.name)
-            if not isinstance(val, typ.lisp_type):
-                self.ffi_func._clean_args()
+                for free_obj in to_free:
+                    free_obj.free_arg()
                 raise EvalException("argument is incorrect type", sexp)
-            self.ffi_func.push_arg(typ.to_ffi(val))
+            typ.push_arg(self.ffi_func, val)
+            to_free.append(typ)
             i += 1
         
-        return self.restype.call_to_lisp(self.ffi_func)
+        ret = self.restype().call(self.ffi_func)
+        for free_obj in to_free:
+            free_obj.free_arg()
+        return ret
 
 class FFILibrary(BoxedType):
     def __init__(self, name):
