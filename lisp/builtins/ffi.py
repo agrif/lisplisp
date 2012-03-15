@@ -6,6 +6,8 @@ import pypy.rlib.clibffi as ffi
 from pypy.rpython.lltypesystem import rffi, lltype
 from pypy.rlib.rdynload import DLOpenError
 
+c_free = rffi.llexternal("free", [rffi.VOIDP], lltype.Void)
+
 class FFIType(object):
     name = "void"
     type = lltype.Void
@@ -57,6 +59,11 @@ class StringType(FFIType):
         func.push_arg(self.charp)
     def free_arg(self):
         lltype.free(self.charp, flavor='raw')
+    def call(self, func):
+        charp = func.call(rffi.CCHARP)
+        ret = String(rffi.charp2str(charp))
+        c_free(charp)
+        return ret
 
 typelist = [
     FFIType,
