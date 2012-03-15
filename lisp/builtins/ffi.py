@@ -164,6 +164,3 @@ def l_ffi_procedure(scope, args):
             raise EvalException("unknown type: " + arg)
     
     return lib.get_procedure(name, full_argtypes, full_restype)
-
-def register(scope):
-    pass
