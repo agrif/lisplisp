@@ -53,14 +53,27 @@ class StringType(FFIType):
     type = rffi.CCHARP
     ffi_type = ffi.ffi_type_pointer
     lisp_type = String
+    def check_lisp_type(self, obj):
+        if obj is None:
+            return True
+        if not isinstance(obj, String):
+            return False
+        return True
     def push_arg(self, func, val):
-        assert isinstance(val, String)
-        self.charp = rffi.str2charp(val.data)
+        if val is None:
+            # nil -> NULL
+            self.charp = lltype.nullptr(rffi.CCHARP.TO)
+        else:
+            assert isinstance(val, String)
+            self.charp = rffi.str2charp(val.data)
         func.push_arg(self.charp)
     def free_arg(self):
-        lltype.free(self.charp, flavor='raw')
+        if self.charp:
+            lltype.free(self.charp, flavor='raw')
     def call(self, func):
         charp = func.call(rffi.CCHARP)
+        if not charp:
+            return None # NULL -> nil
         ret = String(rffi.charp2str(charp))
         c_free(charp)
         return ret
