@@ -1,5 +1,5 @@
 from .procedure import procedure, parse_arguments
-from ..types import Number, Integer, Float
+from ..types import Number, Integer, Float, Symbol
 from ..eval import EvalException, eval
 
 @procedure('+')
@@ -87,3 +87,29 @@ def l_divide(scope, args):
             if val2.value * (val1.value / val2.value) == val1.value:
                 return Integer(val1.value / val2.value)
         return Float(val1.get_float() / val2.get_float())
+
+@procedure('>')
+def l_greater_than(scope, args):
+    req, _, _ = parse_arguments(args, 2)
+    val1 = eval(scope, req[0])
+    if not isinstance(val1, Number):
+        raise EvalException('value is not a number', req[0])
+    val2 = eval(scope, req[1])
+    if not isinstance(val2, Number):
+        raise EvalException('value is not a number', req[1])
+    if val1.get_float() > val2.get_float():
+        return Symbol('t')
+    return None
+
+@procedure('<')
+def l_less_than(scope, args):
+    req, _, _ = parse_arguments(args, 2)
+    val1 = eval(scope, req[0])
+    if not isinstance(val1, Number):
+        raise EvalException('value is not a number', req[0])
+    val2 = eval(scope, req[1])
+    if not isinstance(val2, Number):
+        raise EvalException('value is not a number', req[1])
+    if val1.get_float() < val2.get_float():
+        return Symbol('t')
+    return None
