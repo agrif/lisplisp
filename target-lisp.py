@@ -43,8 +43,7 @@ def entry_point(argv):
     
     try:
         for i in range(len(filenames)):
-            quiet = (i < len(filenames) - 1)
-            evaluate_file(scope, filenames[i], quiet)
+            evaluate_file(scope, filenames[i], quiet=True)
     except EvalException, e:
         e.pretty_print()
         return 1
