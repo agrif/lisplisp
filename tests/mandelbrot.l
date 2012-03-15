@@ -2,9 +2,13 @@
 (setq max-iterations 20)
 (setq width 79)
 (setq height 30)
-(setq center '(-0.7 0.0))
+;(setq center '(-0.7 0.0))
+(setq center '(0.0 0.0))
 (setq radius 1.5)
 (setq aspect-ratio 0.5) ;; width / height per pixel
+
+(setq julia-set t)
+(setq julia-constant '(0.25 -0.6))
 
 ;; complex number maths
 (defun c+ (a b)
@@ -23,9 +27,9 @@
 (defun do-iter (p)
   (setq iteration 0)
   (setq iterating t)
-  (setq z '(0 0))
+  (setq z (if julia-set p '(0 0)))
   (while iterating
-	(setq z (c+ (c* z z) p))
+	(setq z (c+ (c* z z) (if julia-set julia-constant p)))
 	(if (> (mag2 z) 4.0)
 		(setq iterating nil)
 	  (setq iteration (+ iteration 1)))
