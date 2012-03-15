@@ -84,6 +84,6 @@ def l_divide(scope, args):
         if not isinstance(val2, Number):
             raise EvalException('value not a number', opt[0])
         if isinstance(val1, Integer) and isinstance(val2, Integer):
-            if val1.value % val2.value == 0:
+            if val2.value * (val1.value / val2.value) == val1.value:
                 return Integer(val1.value / val2.value)
         return Float(val1.get_float() / val2.get_float())

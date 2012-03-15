@@ -4,6 +4,12 @@ class LispType(object):
     def eq(self, other):
         raise NotImplementedError("eq")
 
+class BoxedType(LispType):
+    def eq(self, other):
+        if not isinstance(other, BoxedType):
+            return False
+        return (self is other)
+
 class InvalidValue(Exception):
     pass
 
@@ -110,4 +116,4 @@ class Procedure(LispType):
     def eq(self, other):
         if not isinstance(other, Procedure):
             return False
-        return self == other
+        return (self is other)

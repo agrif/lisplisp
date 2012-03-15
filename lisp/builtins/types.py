@@ -1,5 +1,5 @@
 from .procedure import procedure, parse_arguments
-from ..types import Cell, Symbol, String, Number, Integer, Float, Procedure
+from ..types import BoxedType, Cell, Symbol, String, Number, Integer, Float, Procedure
 from ..eval import EvalException, eval
 
 def make_checker(name, typ):
@@ -12,6 +12,7 @@ def make_checker(name, typ):
         return None
     return inner_checker
 
+make_checker('boxed', BoxedType)
 make_checker('cell', Cell)
 make_checker('symbol', Symbol)
 make_checker('string', String)
