@@ -1,6 +1,6 @@
 from .procedure import procedure, parse_arguments
 from ..types import InvalidValue, Symbol, Cell, String
-from ..eval import EvalException, eval
+from ..eval import EvalException, eval, eval_list, eval_list_each
 from ..scope import NameNotSet
 from ..parser import parse
 
@@ -12,10 +12,7 @@ def l_quote(scope, args):
 @procedure('eval')
 def l_eval(scope, args):
     _, _, rest = parse_arguments(args, 0, 0, True)
-    res = None
-    for sexp in rest:
-        res = eval(scope, eval(scope, sexp))
-    return res
+    return eval_list(scope, eval_list_each(scope, rest))
 
 def _l_set(scope, args, eval_symbol):
     _, _, rest = parse_arguments(args, 0, 0, True)
@@ -92,8 +89,7 @@ def l_let(scope, args):
     try:
         for name, val in bindings_cached.items():
             scope.set(name, val)
-        for sexp in rest:
-            ret = eval(scope, sexp)
+        ret = eval_list(scope, rest)
     finally:
         scope.pop()
     return ret
@@ -131,16 +127,12 @@ def l_if(scope, args):
     testval = eval(scope, req[0])
     if testval is not None:
         return eval(scope, req[1])
-    ret = None
-    for sexp in rest:
-        ret = eval(scope, sexp)
-    return ret
+    return eval_list(scope, rest)
 
 @procedure('while')
 def l_while(scope, args):
     req, _, rest = parse_arguments(args, 1, 0, True)
     test = req[0]
     while eval(scope, test) is not None:
-        for sexp in rest:
-            eval(scope, sexp)
+        eval_list(scope, rest)
     return None

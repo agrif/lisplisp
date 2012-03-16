@@ -1,5 +1,5 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
-from ..eval import EvalException, eval
+from ..eval import EvalException, eval, eval_list
 
 procedures = []
 
@@ -108,9 +108,7 @@ class LambdaProcedure(Procedure):
         try:
             for name, value in newscope.items():
                 scope.set(name, value)
-            ret = None
-            for sexp in self.body:
-                ret = eval(scope, sexp)
+            ret = eval_list(scope, self.body)
         finally:
             scope.pop()
         

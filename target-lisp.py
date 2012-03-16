@@ -4,9 +4,9 @@ import os
 from lisp.parser import parse
 from lisp.scope import Scope
 from lisp.builtins import register as register_builtins
-from lisp.eval import eval, EvalException
+from lisp.eval import eval_list, EvalException
 
-def evaluate_file(scope, fname, quiet=False):
+def evaluate_file(scope, fname):
     fd = os.open(fname, os.O_RDONLY, 0777)
     data = ""
     while True:
@@ -16,20 +16,9 @@ def evaluate_file(scope, fname, quiet=False):
         data += data_append
     os.close(fd)
     
-    sexp = parse(data)
-    while sexp:
-        if not quiet:
-            if sexp.car is None:
-                print "<< nil"
-            else:
-                print "<<", sexp.car.unparse()
-        res = eval(scope, sexp.car)
-        if not quiet:
-            if res is None:
-                print ">> nil"
-            else:
-                print ">>", res.unparse()
-        sexp = sexp.cdr
+    parsed = parse(data)
+    sexps = parsed.to_list()
+    return eval_list(scope, sexps)
 
 def entry_point(argv):
     try:
@@ -43,7 +32,7 @@ def entry_point(argv):
     
     try:
         for i in range(len(filenames)):
-            evaluate_file(scope, filenames[i], quiet=True)
+            evaluate_file(scope, filenames[i])
     except EvalException, e:
         e.pretty_print()
         return 1

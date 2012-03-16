@@ -54,3 +54,19 @@ def eval(scope, sexp):
     
     # non-cells, non-symbols are atomic
     return sexp
+
+def eval_list(scope, sexps):
+    i = 0
+    ret = None
+    while i < len(sexps):
+        ret = eval(scope, sexps[i])
+        i += 1
+    return ret
+
+def eval_list_each(scope, sexps):
+    i = 0
+    ret = []
+    while i < len(sexps):
+        ret.append(eval(scope, sexps[i]))
+        i += 1
+    return ret
