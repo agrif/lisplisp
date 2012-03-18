@@ -1,26 +1,32 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
 from ..eval import EvalException, eval, eval_list
 
+from pypy.rlib.jit import unroll_safe, hint
+
 procedures = []
 
 class AutoProcedure(Procedure):
+    _immutable_fields_ = ['func']
     def __init__(self, name, func):
         self.func = func
         self.name = name
         Procedure.__init__(self, name)
     def call(self, scope, args):
+        self = hint(self, promote=True)
         return self.func(scope, args)
 
 def procedure(name):
     def register(func):
         proc = AutoProcedure(name, func)
         procedures.append(proc)
+        return func
     return register
 
 def register(scope):
     for proc in procedures:
         scope.set(proc.name, proc)
 
+@unroll_safe
 def parse_arguments(args, num_required, num_optional=0, use_rest=False):
     required = []
     optional = []
@@ -64,6 +70,7 @@ def parse_arguments(args, num_required, num_optional=0, use_rest=False):
     return (required, optional, rest)
 
 class LambdaProcedure(Procedure):
+    _immutable_fields_ = ['required', 'optional', 'rest', 'body', 'eval_args', 'eval_return']
     def __init__(self, required, optional, rest, body, eval_args=True, eval_return=False):
         self.required = required
         self.optional = optional
@@ -74,7 +81,11 @@ class LambdaProcedure(Procedure):
         self.eval_return = eval_return
         
         Procedure.__init__(self, 'nil')
+    
+    @unroll_safe
     def call(self, scope, args):
+        self = hint(self, promote=True)
+        
         reqvals, optvals, restvals = parse_arguments(args, len(self.required), len(self.optional), self.rest is not None)
         restvals.reverse()
         newscope = {}
@@ -116,6 +127,7 @@ class LambdaProcedure(Procedure):
             return eval(scope, ret)
         return ret
 
+@unroll_safe
 def _l_lambda_macro(scope, args, eval_args, eval_return):
     req, _, rest = parse_arguments(args, 1, 0, True)
     if not isinstance(req[0], Cell):

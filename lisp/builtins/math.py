@@ -2,7 +2,10 @@ from .procedure import procedure, parse_arguments
 from ..types import Number, Integer, Float, Symbol
 from ..eval import EvalException, eval
 
+from pypy.rlib.jit import unroll_safe
+
 @procedure('+')
+@unroll_safe
 def l_add(scope, args):
     _, _, rest = parse_arguments(args, 0, 0, True)
     use_float = False
@@ -26,6 +29,7 @@ def l_add(scope, args):
     return Integer(gather)
 
 @procedure('*')
+@unroll_safe
 def l_multiply(scope, args):
     _, _, rest = parse_arguments(args, 0, 0, True)
     use_float = False

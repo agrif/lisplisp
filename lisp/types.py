@@ -1,3 +1,5 @@
+from pypy.rlib.jit import elidable as purefunction
+
 class LispType(object):
     def unparse(self):
         raise NotImplementedError("unparse")
@@ -5,6 +7,7 @@ class LispType(object):
         raise NotImplementedError("eq")
 
 class BoxedType(LispType):
+    @purefunction
     def eq(self, other):
         if not isinstance(other, BoxedType):
             return False
@@ -14,6 +17,7 @@ class InvalidValue(Exception):
     pass
 
 class Cell(LispType):
+    _immutable_fields_ = ['car', 'cdr']
     def __init__(self, car, cdr=None):
         self.car = car
         self.cdr = cdr
@@ -31,6 +35,7 @@ class Cell(LispType):
         return gather
     def unparse(self):
         return "(" + self._unparse_internal() + ")"
+    @purefunction
     def eq(self, other):
         if not isinstance(other, Cell):
             return False
@@ -43,6 +48,7 @@ class Cell(LispType):
         if self.cdr is not None and self.cdr.eq(other.cdr):
             return True
         return False
+    @purefunction
     def to_list(self):
         ret = []
         sexp = self
@@ -58,24 +64,28 @@ class Number(LispType):
         raise NotImplementedError('get_float')
 
 class Integer(Number):
+    _immutable_fields_ = ['value']
     def __init__(self, val):
         self.value = val
     def get_float(self):
         return float(self.value)
     def unparse(self):
         return str(self.value)
+    @purefunction
     def eq(self, other):
         if not isinstance(other, Integer):
             return False
         return self.value == other.value
 
 class Float(Number):
+    _immutable_fields_ = ['value']
     def __init__(self, val):
         self.value = val
     def get_float(self):
         return self.value
     def unparse(self):
         return str(self.value)
+    @purefunction
     def eq(self, other):
         if not isinstance(other, Float):
             return False
@@ -84,6 +94,7 @@ class Float(Number):
 _symbol_disallowed = "\".`',; \n\r\t()[]";
 
 class Symbol(LispType):
+    _immutable_fields_ = ['name']
     def __init__(self, name):
         for c in name:
             if c in _symbol_disallowed:
@@ -91,16 +102,19 @@ class Symbol(LispType):
         self.name = name
     def unparse(self):
         return self.name
+    @purefunction
     def eq(self, other):
         if not isinstance(other, Symbol):
             return False
         return self.name == other.name
 
 class String(LispType):
+    _immutable_fields_ = ['data']
     def __init__(self, data):
         self.data = data
     def unparse(self):
         return self.data
+    @purefunction
     def eq(self, other):
         if not isinstance(other, String):
             return False
@@ -113,6 +127,7 @@ class Procedure(LispType):
         return "#<procedure #%s>" % (self.name,)
     def call(self, scope, args):
         raise NotImplementedError('call')
+    @purefunction
     def eq(self, other):
         if not isinstance(other, Procedure):
             return False

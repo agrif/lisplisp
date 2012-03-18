@@ -1,13 +1,13 @@
 ;; some global settings
-(setq max-iterations 20)
-(setq width 79)
-(setq height 30)
-;(setq center '(-0.7 0.0))
-(setq center '(0.0 0.0))
+(setq max-iterations 200)
+(setq width 160)
+(setq height 60)
+(setq center '(-0.7 0.0))
+;(setq center '(0.0 0.0))
 (setq radius 1.5)
 (setq aspect-ratio 0.5) ;; width / height per pixel
 
-(setq julia-set t)
+(setq julia-set nil)
 (setq julia-constant '(0.25 -0.6))
 
 ;; complex number maths

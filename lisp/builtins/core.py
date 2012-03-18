@@ -4,6 +4,8 @@ from ..eval import EvalException, eval, eval_list, eval_list_each
 from ..scope import NameNotSet
 from ..parser import parse
 
+from pypy.rlib.jit import unroll_safe
+
 @procedure('quote')
 def l_quote(scope, args):
     req, _, _ = parse_arguments(args, 1)
@@ -14,6 +16,7 @@ def l_eval(scope, args):
     _, _, rest = parse_arguments(args, 0, 0, True)
     return eval_list(scope, eval_list_each(scope, rest))
 
+@unroll_safe
 def _l_set(scope, args, eval_symbol):
     _, _, rest = parse_arguments(args, 0, 0, True)
     
@@ -58,6 +61,7 @@ def l_set_p(scope, args):
     return Symbol('t')
 
 @procedure('let')
+@unroll_safe
 def l_let(scope, args):
     req, _, rest = parse_arguments(args, 1, 0, True)
     if not isinstance(req[0], Cell):

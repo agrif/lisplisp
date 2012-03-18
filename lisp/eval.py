@@ -1,6 +1,27 @@
 from .types import Cell, Symbol, Procedure
 from .scope import NameNotSet
 
+from pypy.rlib.jit import JitDriver, unroll_safe
+
+def get_location(i, sexps_len, sexps):
+    j = 0
+    ret = ""
+    while j < sexps_len:
+        sexp = sexps[j]
+        if j == i:
+            ret += "_"
+        if sexp is None:
+            ret += "nil"
+        else:
+            ret += sexp.unparse()
+        if j == i:
+            ret += "_"
+        if j != sexps_len - 1:
+            ret += " "
+        j += 1
+    return ret
+jitdriver = JitDriver(greens=['i', 'sexps_len', 'sexps'], reds=['scope'], get_printable_location=get_location)
+
 class EvalException(Exception):
     def __init__(self, message, sexp=None):
         self.message = message
@@ -55,14 +76,18 @@ def eval(scope, sexp):
     # non-cells, non-symbols are atomic
     return sexp
 
+@unroll_safe
 def eval_list(scope, sexps):
     i = 0
     ret = None
-    while i < len(sexps):
+    sexps_len = len(sexps)
+    while i < sexps_len:
+        jitdriver.jit_merge_point(sexps=sexps, sexps_len=sexps_len, scope=scope, i=i)
         ret = eval(scope, sexps[i])
         i += 1
     return ret
 
+@unroll_safe
 def eval_list_each(scope, sexps):
     i = 0
     ret = []
