@@ -24,7 +24,7 @@ def procedure(name):
 
 def register(scope):
     for proc in procedures:
-        scope.set(proc.name, proc)
+        scope.set_semiconstant(proc.name, proc)
 
 @unroll_safe
 def parse_arguments(args, num_required, num_optional=0, use_rest=False):

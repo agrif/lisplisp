@@ -1,7 +1,7 @@
 from .types import Cell, Symbol, Procedure
 from .scope import NameNotSet
 
-from pypy.rlib.jit import JitDriver, unroll_safe
+from pypy.rlib.jit import JitDriver, unroll_safe, hint
 
 def get_location(i, sexps_len, sexps):
     j = 0
@@ -83,7 +83,8 @@ def eval_list(scope, sexps):
     sexps_len = len(sexps)
     while i < sexps_len:
         jitdriver.jit_merge_point(sexps=sexps, sexps_len=sexps_len, scope=scope, i=i)
-        ret = eval(scope, sexps[i])
+        sexp = hint(sexps[i], promote=True)
+        ret = eval(scope, sexp)
         i += 1
     return ret
 

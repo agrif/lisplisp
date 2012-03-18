@@ -1,7 +1,7 @@
 ;; some global settings
 (setq max-iterations 200)
-(setq width 160)
-(setq height 60)
+(setq width 79)
+(setq height 30)
 (setq center '(-0.7 0.0))
 ;(setq center '(0.0 0.0))
 (setq radius 1.5)
