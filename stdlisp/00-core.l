@@ -2,7 +2,7 @@
 ;; builtins/core.py, builtins/procedure.py, builtins/types.py
 
 ;; useful function for creating lists of evaluated arguments
-(setq list (lambda (&rest cdr) cdr))
+(setq list (lambda (&rest rest) rest))
 
 ;; macro definition macro (yes. really.)
 (setq defmacro
