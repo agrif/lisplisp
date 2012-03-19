@@ -72,7 +72,8 @@ def parse_arguments(args, num_required, num_optional=0, use_rest=False):
 
 class LambdaProcedure(Procedure):
     _immutable_fields_ = ['required', 'optional', 'rest', 'body', 'eval_args', 'eval_return']
-    def __init__(self, required, optional, rest, body, eval_args=True, eval_return=False):
+    def __init__(self, scope, required, optional, rest, body, eval_args=True, eval_return=False):
+        self.scope = scope
         self.required = required
         self.optional = optional
         self.rest = rest
@@ -116,7 +117,7 @@ class LambdaProcedure(Procedure):
         if self.rest is not None:
             newscope[self.rest] = rest_cell
         
-        newscope_obj = Scope(scope)
+        newscope_obj = Scope(self.scope)
         for name, value in newscope.items():
             newscope_obj.set_semiconstant(name, value, local_only=True)
         ret = eval_list(newscope_obj, self.body)
@@ -168,7 +169,7 @@ def _l_lambda_macro(scope, args, eval_args, eval_return):
         else:
             restname = name
         
-    return LambdaProcedure(required, optional, restname, rest, eval_args, eval_return)
+    return LambdaProcedure(scope, required, optional, restname, rest, eval_args, eval_return)
 
 @procedure('lambda')
 def l_lambda(scope, args):
