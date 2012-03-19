@@ -1,7 +1,7 @@
 from .procedure import procedure, parse_arguments
 from ..types import InvalidValue, Symbol, Cell, String
 from ..eval import EvalException, eval, eval_list, eval_list_each
-from ..scope import NameNotSet
+from ..scope import Scope, NameNotSet
 from ..parser import parse
 
 from pypy.rlib.jit import unroll_safe
@@ -54,11 +54,9 @@ def l_set_p(scope, args):
     symbol = eval(scope, req[0])
     if not isinstance(symbol, Symbol):
         raise EvalException("value is not a symbol", req[0])
-    try:
-        scope.get(symbol.name)
-    except NameNotSet:
-        return None
-    return Symbol('t')
+    if scope.is_set(symbol.name):
+        return Symbol('t')
+    return None
 
 @procedure('let')
 @unroll_safe
@@ -88,15 +86,10 @@ def l_let(scope, args):
         value = eval(scope, value)
         bindings_cached[symbol.name] = value
     
-    ret = None
-    scope.push()
-    try:
-        for name, val in bindings_cached.items():
-            scope.set(name, val)
-        ret = eval_list(scope, rest)
-    finally:
-        scope.pop()
-    return ret
+    newscope = Scope(scope)
+    for name, val in bindings_cached.items():
+        newscope.set(name, val, local_only=True)
+    return eval_list(newscope, rest)
 
 @procedure('throw')
 def l_throw(scope, args):

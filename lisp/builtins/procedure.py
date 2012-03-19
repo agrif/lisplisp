@@ -1,5 +1,6 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
 from ..eval import EvalException, eval, eval_list
+from ..scope import Scope
 
 from pypy.rlib.jit import unroll_safe, hint
 
@@ -115,13 +116,10 @@ class LambdaProcedure(Procedure):
         if self.rest is not None:
             newscope[self.rest] = rest_cell
         
-        scope.push()
-        try:
-            for name, value in newscope.items():
-                scope.set(name, value)
-            ret = eval_list(scope, self.body)
-        finally:
-            scope.pop()
+        newscope_obj = Scope(scope)
+        for name, value in newscope.items():
+            newscope_obj.set_semiconstant(name, value, local_only=True)
+        ret = eval_list(newscope_obj, self.body)
         
         if self.eval_return:
             return eval(scope, ret)
