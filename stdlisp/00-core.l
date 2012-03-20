@@ -25,18 +25,33 @@
   (car (cdr cell)))
 (defun cdar (cell)
   (cdr (car cell)))
-(defun cddr(cell)
+(defun cddr (cell)
   (cdr (cdr cell)))
 
 ;; an implementation of quasiquote
-;; doesn't support splicing or nesting
 
-(defun expand-unquotes (el)
-  (if (cell-p el)
-	  (if (eq (car el) 'unquote)
-		  (eval (cadr el))
-		(cons (expand-unquotes (car el)) (expand-unquotes (cdr el))))
-	el))
+(defmacro unquote (arg)
+  (list 'quote (list 'unquote arg)))
+
+(defmacro unquote-splicing (arg)
+  (list 'quote (list 'unquote-splicing arg)))
 
 (defmacro quasiquote (arg)
-  (list 'quote (expand-unquotes arg)))
+  (if (cell-p arg)
+	  (if (eq (car arg) 'unquote)
+		  (let ((unquote-args (cdr arg)))
+			(if (and (cell-p unquote-args) (nil-p (cdr unquote-args)))
+				(car unquote-args)
+			  (throw "invalid arguments to unquote")))
+		
+		(if (and (cell-p (cdr arg)) (cell-p (cadr arg)) (eq (car (cadr arg)) 'unquote-splicing))
+			(let ((first (car arg)) (unquote-args (cdr (cadr arg))))
+			  (if (and (cell-p unquote-args) (nil-p (cdr unquote-args)))
+				  (list 'quote (cons
+								(eval (list 'quasiquote (car arg)))
+								(eval (car unquote-args))))
+				(throw "invalid arguments to unquote-splicing")))
+		  (list 'quote (cons
+						(eval (list 'quasiquote (car arg)))
+						(eval (list 'quasiquote (cdr arg)))))))
+	(list 'quote arg)))
