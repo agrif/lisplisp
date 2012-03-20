@@ -1,5 +1,5 @@
 from .procedure import procedure, parse_arguments
-from ..types import InvalidValue, Symbol, Cell, String
+from ..types import InvalidValue, Symbol, Cell, String, Procedure
 from ..eval import EvalException, eval, eval_list, eval_list_each
 from ..scope import Scope, NameNotSet
 from ..parser import parse
@@ -99,6 +99,27 @@ def l_throw(scope, args):
         raise EvalException("error is not a string")
     raise EvalException(error.data)
 
+@procedure('catch')
+@unroll_safe
+def l_catch(scope, args):
+    req, _, rest = parse_arguments(args, 1, 0, True)
+    handler = eval(scope, req[0])
+    if not isinstance(handler, Procedure):
+        raise EvalException("handler is not a procedure")
+    ret = None
+    try:
+        ret = eval_list(scope, rest)
+    except EvalException, e:
+        message = e.message
+        trace = list(e.trace)
+        trace.reverse()
+        trace_lisp = None
+        for sexp in trace:
+            trace_lisp = Cell(sexp, trace_lisp)
+        args = Cell(String(message), Cell(Cell(Symbol('quote'), Cell(trace_lisp))))
+        ret = eval(scope, Cell(handler, args))
+    return ret
+
 @procedure('parse')
 def l_parse(scope, args):
     req, _, _ = parse_arguments(args, 1)
@@ -117,6 +138,11 @@ def l_unparse(scope, args):
     if val is None:
         return String('nil')
     return String(val.unparse())
+
+@procedure('begin')
+def l_begin(scope, args):
+    _, _, rest = parse_arguments(args, 0, 0, True)
+    return eval_list(scope, rest)
 
 @procedure('if')
 def l_if(scope, args):
