@@ -144,6 +144,25 @@ def l_begin(scope, args):
     _, _, rest = parse_arguments(args, 0, 0, True)
     return eval_list(scope, rest)
 
+@procedure('and')
+def l_and(scope, args):
+    _, _, rest = parse_arguments(args, 0, 0, True)
+    ret = Symbol('t')
+    for sexp in rest:
+        ret = eval(scope, sexp)
+        if ret is None:
+            return None
+    return ret
+
+@procedure('or')
+def l_or(scope, args):
+    _, _, rest = parse_arguments(args, 0, 0, True)
+    for sexp in rest:
+        ret = eval(scope, sexp)
+        if ret is not None:
+            return ret
+    return None
+
 @procedure('if')
 def l_if(scope, args):
     req, _, rest = parse_arguments(args, 2, 0, True)
