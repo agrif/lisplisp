@@ -125,7 +125,7 @@ class Procedure(LispType):
         self.name = name
     def unparse(self):
         return "#<procedure #%s>" % (self.name,)
-    def call(self, scope, args):
+    def call(self, scope, args, continuation):
         raise NotImplementedError('call')
     @purefunction
     def eq(self, other):

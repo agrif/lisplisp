@@ -29,10 +29,7 @@ class EvalException(Exception):
         if sexp is not None:
             self.trace.append(sexp)
         #Exception.__init__(self, message)
-    def propogate(self, sexp):
-        self.trace.append(sexp)
-        return self
-    
+
     def pretty_print(self):
         print ""
         print "*** Exception:"
@@ -48,51 +45,85 @@ class EvalException(Exception):
         print ""
         print "***", self.message
 
-def eval(scope, sexp):
-    if isinstance(sexp, Cell):
-        try:
-            function = eval(scope, sexp.car)
-        except EvalException, e:
-            raise e.propogate(sexp)
-        args = sexp.cdr
-        # call function with args
-        if isinstance(function, Procedure):
+class EvalState(object):
+    def __init__(self, scope, sexp, callback, callbackint):
+        self.scope = scope
+        self.sexp = sexp
+        self.callback = callback
+        self.callbackint = callbackint
+    def next(self, result):
+        return self.callback(self.callbackint, result)
+
+class EvalLastState(EvalState):
+    def __init__(self, scope, sexp):
+        EvalState.__init__(self, scope, sexp, None, 0)
+        self.result = None
+    def next(self, result):
+        self.result = result
+        return None
+
+class EvalFunctionHelper(object):
+    def __init__(self, scope, func, args, continuation):
+        self.scope = scope
+        self.orig_func = func
+        self.args = args
+        self.continuation = continuation
+        self.state = EvalState(scope, func, self.callback, 0)
+    def callback(self, unused, func):
+        if not isinstance(func, Procedure):
+            raise EvalException("expression did not evaluate to procedure", self.orig_func)
+        # call the function
+        return func.call(self.scope, self.args, self.continuation)
+
+def eval_intern(state):
+    # FIXME jit
+    while True:
+        oldstate = state
+        if isinstance(state.sexp, Cell):
+            # evaluate a function
+            helper = EvalFunctionHelper(state.scope, state.sexp.car, state.sexp.cdr, state)
+            state = helper.state
+        elif isinstance(state.sexp, Symbol):
+            # symbol lookup
             try:
-                return function.call(scope, args)
-            except EvalException, e:
-                raise e.propogate(sexp)
-            except Exception, e:
-                raise
-                #raise EvalException("An unknown error occurred.", sexp)
-        # raise an eval exception
-        e = EvalException("value does not evaluate to a procedure", function)
-        raise e.propogate(sexp)
-    elif isinstance(sexp, Symbol):
-        try:
-            return scope.get(sexp.name)
-        except NameNotSet:
-            raise EvalException("symbol is not set", sexp)
+                val = state.scope.get(state.sexp.name)
+            except NameNotSet:
+                raise EvalException("symbol not set", state.sexp)
+            state = state.next(val)
+        else:
+            # all other values are self-evaluating
+            state = state.next(state.sexp)
+        
+        # if the new state is None, this means return altogether
+        if state is None:
+            assert isinstance(oldstate, EvalLastState)
+            return oldstate.result
+
+def eval(scope, sexp):
+    return eval_intern(EvalLastState(scope, sexp))
+
+class EvalListHelper(object):
+    def __init__(self, scope, sexps):
+        self.scope = scope
+        self.sexps = sexps
+        self.sexps_len = len(sexps)
+        self.startstate = EvalState(scope, sexps[0], self.callback, 1)
     
-    # non-cells, non-symbols are atomic
-    return sexp
+    def callback(self, sexp_num, result):
+        next_sexp = sexps[sexp_num]
+        if sexp_num + 1 == self.sexps_len:
+            # this is the last one, stop eval'ing
+            return EvalLastState(self.scope, next_sexp)
+        return EvalState(self.scope, next_sexp, self.callback, sexp_num + 1)
 
 @unroll_safe
 def eval_list(scope, sexps):
-    i = 0
-    ret = None
     sexps_len = len(sexps)
-    while i < sexps_len:
-        jitdriver.jit_merge_point(sexps=sexps, sexps_len=sexps_len, scope=scope, i=i)
-        sexp = hint(sexps[i], promote=True)
-        ret = eval(scope, sexp)
-        i += 1
-    return ret
-
-@unroll_safe
-def eval_list_each(scope, sexps):
-    i = 0
-    ret = []
-    while i < len(sexps):
-        ret.append(eval(scope, sexps[i]))
-        i += 1
-    return ret
+    if sexps_len == 0:
+        return None
+    elif sexps_len == 1:
+        return eval(scope, sexps[0])
+    else:
+        # general case
+        helper = EvalListHelper(scope, sexps)
+        return eval_intern(helper.startstate)
