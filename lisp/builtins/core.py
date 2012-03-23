@@ -56,8 +56,8 @@ class SetP(BuiltinFull):
         self.continuation = continuation
         self.scope = scope
         self.orig_symbol = req[0]
-        return EvalState(scope, req[0], self.got_symbol, 0)
-    def got_symbol(self, unused, symbol):
+        return EvalState(scope, req[0], self, 0)
+    def got_result(self, unused, symbol):
         if not isinstance(symbol, Symbol):
             raise EvalException("value is not a symbol", self.orig_symbol)
         if self.scope.is_set(symbol.name):
@@ -162,7 +162,7 @@ class And(BuiltinFull):
         if self.num_args == 0:
             # default true
             return continuation.next(Symbol('t'))
-        return EvalState(scope, self.args[0], self.got_result, 0)
+        return EvalState(scope, self.args[0], self, 0)
     def got_result(self, i, result):
         # if this is the end, return
         if i + 1 >= self.num_args:
@@ -172,7 +172,7 @@ class And(BuiltinFull):
             return self.continuation.next(None)
         
         # evaluate the next one
-        return EvalState(self.scope, self.args[i + 1], self.got_result, i + 1)
+        return EvalState(self.scope, self.args[i + 1], self, i + 1)
 
 @builtin_full('or')
 class Or(BuiltinFull):
@@ -185,7 +185,7 @@ class Or(BuiltinFull):
         if self.num_args == 0:
             # default nil
             return continuation.next(None)
-        return EvalState(scope, self.args[0], self.got_result, 0)
+        return EvalState(scope, self.args[0], self, 0)
     def got_result(self, i, result):
         # if this is the end, return
         if i + 1 >= self.num_args:
@@ -195,7 +195,7 @@ class Or(BuiltinFull):
             return self.continuation.next(result)
         
         # evaluate the next one
-        return EvalState(self.scope, self.args[i + 1], self.got_result, i + 1)
+        return EvalState(self.scope, self.args[i + 1], self, i + 1)
 
 @builtin_full('if')
 class If(BuiltinFull):
@@ -206,7 +206,7 @@ class If(BuiltinFull):
         self.scope = scope
         self.continuation = continuation
         # evaluate the test
-        return EvalState(scope, req[0], self.got_result, 0)
+        return EvalState(scope, req[0], self, 0)
     def got_result(self, unused, result):
         if result is None:
             # false
@@ -223,12 +223,15 @@ class While(BuiltinFull):
         self.body = rest
         self.scope = scope
         self.continuation = continuation
-        return self.do_test(0, None)
-    def do_test(self, unused1, unused2):
-        return EvalState(self.scope, self.test, self.got_result, 0)
-    def got_result(self, unused, result):
-        # if it's false, just return
-        if result is None:
-            return self.continuation.next(None)
-        # do the loop otherwise
-        return EvalListState(self.scope, self.body, EvalState(None, None, self.do_test, 0))
+        return self.got_result(0, None)
+    def got_result(self, mode, result):
+        if mode == 0:
+            # test mode
+            return EvalState(self.scope, self.test, self, 1)
+        elif mode == 1:
+            # body mode
+            # if it's false, just return
+            if result is None:
+                return self.continuation.next(None)
+            # do the loop otherwise, come back in test mode
+            return EvalListState(self.scope, self.body, EvalState(None, None, self, 0))

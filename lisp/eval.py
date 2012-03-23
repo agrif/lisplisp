@@ -45,29 +45,35 @@ class EvalException(Exception):
         print ""
         print "***", self.message
 
-class EvalState(object):
-    def __init__(self, scope, sexp, callback, callbackint):
+class EvalStateBase(object):
+    def __init__(self, scope, sexp):
         self.scope = scope
         self.sexp = sexp
-        self.callback = callback
+    def next(self, result):
+        raise NotImplementedError("base")
+
+class EvalState(EvalStateBase):
+    def __init__(self, scope, sexp, callbackobj, callbackint):
+        EvalStateBase.__init__(self, scope, sexp)
+        self.callbackobj = callbackobj
         self.callbackint = callbackint
     def next(self, result):
-        if self.callback is not None:
-            return self.callback(self.callbackint, result)
+        if self.callbackobj is not None:
+            return self.callbackobj.got_result(self.callbackint, result)
         return None
 
-class EvalEndState(EvalState):
+class EvalEndState(EvalStateBase):
     def __init__(self):
-        EvalState.__init__(self, None, None, None, 0)
+        EvalStateBase.__init__(self, None, None)
         self.result = None
     def next(self, result):
         if self.result is None:
             self.result = result
         return self
 
-class EvalFunctionState(EvalState):
+class EvalFunctionState(EvalStateBase):
     def __init__(self, scope, func, args, continuation):
-        EvalState.__init__(self, scope, func, None, 0)
+        EvalStateBase.__init__(self, scope, func)
         self.args = args
         self.continuation = continuation
     def next(self, result):
@@ -75,9 +81,9 @@ class EvalFunctionState(EvalState):
             raise EvalException("expression did not evaluate to a procedure", self.sexp)
         return result.call(self.scope, self.args, self.continuation)
 
-class EvalListState(EvalState):
+class EvalListState(EvalStateBase):
     def __init__(self, scope, sexps, continuation):
-        EvalState.__init__(self, scope, None, None, 0)
+        EvalStateBase.__init__(self, scope, None)
         self.sexps = sexps
         self.sexps_len = len(sexps)
         self.continuation = continuation        

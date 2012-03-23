@@ -7,6 +7,8 @@ from pypy.rlib.jit import unroll_safe, hint
 class BuiltinFull(object):
     def call(self, scope, args, continuation):
         raise NotImplementedError('call')
+    def got_result(self, i, result):
+        raise NotImplementedError('got_result')
 
 class BuiltinFullProcedure(Procedure):
     def __init__(self, cls, name):
