@@ -52,78 +52,76 @@ class EvalState(object):
         self.callback = callback
         self.callbackint = callbackint
     def next(self, result):
-        return self.callback(self.callbackint, result)
-
-class EvalLastState(EvalState):
-    def __init__(self, scope, sexp):
-        EvalState.__init__(self, scope, sexp, None, 0)
-        self.result = None
-    def next(self, result):
-        self.result = result
+        if self.callback is not None:
+            return self.callback(self.callbackint, result)
         return None
 
-class EvalFunctionHelper(object):
+class EvalEndState(EvalState):
+    def __init__(self):
+        EvalState.__init__(self, None, None, None, 0)
+        self.result = None
+    def next(self, result):
+        if self.result is None:
+            self.result = result
+        return self
+
+class EvalFunctionState(EvalState):
     def __init__(self, scope, func, args, continuation):
-        self.scope = scope
-        self.orig_func = func
+        EvalState.__init__(self, scope, func, None, 0)
         self.args = args
         self.continuation = continuation
-        self.state = EvalState(scope, func, self.callback, 0)
-    def callback(self, unused, func):
-        if not isinstance(func, Procedure):
-            raise EvalException("expression did not evaluate to procedure", self.orig_func)
-        # call the function
-        return func.call(self.scope, self.args, self.continuation)
+    def next(self, result):
+        if not isinstance(result, Procedure):
+            raise EvalException("expression did not evaluate to a procedure", self.sexp)
+        return result.call(self.scope, self.args, self.continuation)
 
+class EvalListState(EvalState):
+    def __init__(self, scope, sexps, continuation):
+        EvalState.__init__(self, scope, None, None, 0)
+        self.sexps = sexps
+        self.sexps_len = len(sexps)
+        self.continuation = continuation        
+        self.current = 0
+        if self.sexps_len > 0:
+            self.sexp = sexps[0]
+        else:
+            self.sexp = None
+    def next(self, result):
+        if not self.current + 1 < self.sexps_len:
+            # this is the last one
+            return self.continuation.next(result)
+        
+        # move on to the next sexp
+        self.current += 1
+        self.sexp = self.sexps[self.current]
+        return self
+
+@unroll_safe
 def eval_intern(state):
     # FIXME jit
     while True:
-        oldstate = state
-        if isinstance(state.sexp, Cell):
+        # if this is an end state, return
+        if isinstance(state, EvalEndState):
+            return state.result
+        
+        sexp = state.sexp
+        # evaluate the sexp
+        if isinstance(sexp, Cell):
             # evaluate a function
-            helper = EvalFunctionHelper(state.scope, state.sexp.car, state.sexp.cdr, state)
-            state = helper.state
-        elif isinstance(state.sexp, Symbol):
+            state = EvalFunctionState(state.scope, sexp.car, sexp.cdr, state)
+        elif isinstance(sexp, Symbol):
             # symbol lookup
             try:
-                val = state.scope.get(state.sexp.name)
+                val = state.scope.get(sexp.name)
             except NameNotSet:
-                raise EvalException("symbol not set", state.sexp)
+                raise EvalException("symbol not set", sexp)
             state = state.next(val)
         else:
             # all other values are self-evaluating
-            state = state.next(state.sexp)
-        
-        # if the new state is None, this means return altogether
-        if state is None:
-            assert isinstance(oldstate, EvalLastState)
-            return oldstate.result
+            state = state.next(sexp)
+
+def eval_list(scope, sexps):
+    return eval_intern(EvalListState(scope, sexps, EvalEndState()))
 
 def eval(scope, sexp):
-    return eval_intern(EvalLastState(scope, sexp))
-
-class EvalListHelper(object):
-    def __init__(self, scope, sexps):
-        self.scope = scope
-        self.sexps = sexps
-        self.sexps_len = len(sexps)
-        self.startstate = EvalState(scope, sexps[0], self.callback, 1)
-    
-    def callback(self, sexp_num, result):
-        next_sexp = sexps[sexp_num]
-        if sexp_num + 1 == self.sexps_len:
-            # this is the last one, stop eval'ing
-            return EvalLastState(self.scope, next_sexp)
-        return EvalState(self.scope, next_sexp, self.callback, sexp_num + 1)
-
-@unroll_safe
-def eval_list(scope, sexps):
-    sexps_len = len(sexps)
-    if sexps_len == 0:
-        return None
-    elif sexps_len == 1:
-        return eval(scope, sexps[0])
-    else:
-        # general case
-        helper = EvalListHelper(scope, sexps)
-        return eval_intern(helper.startstate)
+    return eval_list(scope, [sexp])
