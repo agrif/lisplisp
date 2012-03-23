@@ -5,6 +5,14 @@ from ..scope import Scope
 from pypy.rlib.jit import unroll_safe, hint
 
 class BuiltinFull(Continuable):
+    """A Continuable used for builtin functions that need special
+    handling. Note that in order for continuations to work everywhere,
+    you *must* accept calls to got_result that it has already
+    recieved. Continuations may cause the evaluator to backtrack.
+    
+    Decorate subclasses with @builtin_full(name) to automatically
+    create a procedure wrapping it and register it automatically in
+    new scopes."""
     def call(self, scope, args, continuation):
         raise NotImplementedError('call')
 

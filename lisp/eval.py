@@ -23,6 +23,8 @@ def get_location(i, sexps_len, sexps):
 jitdriver = JitDriver(greens=['i', 'sexps_len', 'sexps'], reds=['scope'], get_printable_location=get_location)
 
 class EvalException(Exception):
+    """An evaluation exception. This exception is used to implement
+    exceptions in the interpreted program."""
     def __init__(self, message, sexp=None):
         self.message = message
         self.trace = []
@@ -46,14 +48,25 @@ class EvalException(Exception):
         print "***", self.message
 
 class Continuation(object):
+    """Represents a continuation. Calling next(..) with a result
+    should return a new evaluation state, containing both something to
+    evaluate and another continuation."""
     def next(self, result):
         raise NotImplementedError("next")
 
 class Continuable(object):
+    """An object that can be used to implement a continuation. Pass
+    this object and an integer into CommonContinuation to create a
+    continuation that will call got_result(..) with that integer and
+    the result given to next(..). got_result(..) should return an
+    evaluation state."""
     def got_result(self, i, result):
         raise NotImplementedError("got_result")
 
 class CommonContinuation(Continuation):
+    """A Continuation implementation that uses a Continuable as a
+    backend. This little dance is needed because closures don't really
+    work very well with RPython."""
     def __init__(self, continuable, i):
         self.continuable = continuable
         self.i = i
@@ -61,6 +74,10 @@ class CommonContinuation(Continuation):
         return self.continuable.got_result(self.i, result)
 
 class EvalState(Continuation):
+    """An evaluation state. This is a storage object for a scope, an
+    expression to evaluate in that scope, and a continuation to call
+    when that expression is done evaluating. Use this to evaluate
+    sub-expressions without recursively calling eval(..)."""
     def __init__(self, scope, sexp, continuation):
         self.scope = scope
         self.sexp = sexp
@@ -70,6 +87,10 @@ class EvalState(Continuation):
             return self.continuation.next(result)
 
 class EvalEndState(EvalState):
+    """A special evaluation state that indicates the eval(..) function
+    should return with the value given to next(..). This is used
+    internally and you probably shouldn't use it outside of
+    eval.py."""
     def __init__(self):
         EvalState.__init__(self, None, None, None)
         self.result = None
@@ -79,6 +100,10 @@ class EvalEndState(EvalState):
         return self
 
 class EvalFunctionState(EvalState):
+    """A special evaluation state for evaluating a symbol into a
+    function, then calling that function with the given arguments and
+    continuation. This is used internally and probably shouldn't be
+    used outside of eval.py."""
     def __init__(self, scope, func, args, continuation):
         EvalState.__init__(self, scope, func, continuation)
         self.args = args
@@ -88,6 +113,9 @@ class EvalFunctionState(EvalState):
         return result.call(self.scope, self.args, self.continuation)
 
 class EvalListState(EvalState):
+    """A useful evaluation state for evaluating a list of
+    expressions. The result of the final expression is provided to the
+    given continuation."""
     def __init__(self, scope, sexps, continuation):
         EvalState.__init__(self, scope, None, continuation)
         self.sexps = sexps
@@ -108,7 +136,7 @@ class EvalListState(EvalState):
         return self
 
 @unroll_safe
-def eval_intern(state):
+def _eval_intern(state):
     # FIXME jit
     while True:
         # if this is an end state, return
@@ -137,7 +165,13 @@ def eval_intern(state):
             state = state.next(sexp)
 
 def eval_list(scope, sexps):
-    return eval_intern(EvalListState(scope, sexps, EvalEndState()))
+    """Evaluate a list of expressions in the given scope. As with all
+    evaluation functions, this should *not* be called recursively for
+    continuations to work properly."""
+    return _eval_intern(EvalListState(scope, sexps, EvalEndState()))
 
 def eval(scope, sexp):
-    return eval_list(scope, [sexp])
+    """Evaluate an expression in the given scope. As with all
+    evaluation functions, this should *not* be called recursively for
+    continuations to work properly."""
+    return _eval_intern(EvalState(scope, sexp, EvalEndState()))
