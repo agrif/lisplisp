@@ -1,14 +1,12 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
-from ..eval import EvalException
+from ..eval import EvalException, Continuable
 from ..scope import Scope
 
 from pypy.rlib.jit import unroll_safe, hint
 
-class BuiltinFull(object):
+class BuiltinFull(Continuable):
     def call(self, scope, args, continuation):
         raise NotImplementedError('call')
-    def got_result(self, i, result):
-        raise NotImplementedError('got_result')
 
 class BuiltinFullProcedure(Procedure):
     def __init__(self, cls, name):

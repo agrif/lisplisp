@@ -45,48 +45,53 @@ class EvalException(Exception):
         print ""
         print "***", self.message
 
-class EvalStateBase(object):
-    def __init__(self, scope, sexp):
+class Continuation(object):
+    def next(self, result):
+        raise NotImplementedError("next")
+
+class Continuable(object):
+    def got_result(self, i, result):
+        raise NotImplementedError("got_result")
+
+class CommonContinuation(Continuation):
+    def __init__(self, continuable, i):
+        self.continuable = continuable
+        self.i = i
+    def next(self, result):
+        return self.continuable.got_result(self.i, result)
+
+class EvalState(Continuation):
+    def __init__(self, scope, sexp, continuation):
         self.scope = scope
         self.sexp = sexp
+        self.continuation = continuation
     def next(self, result):
-        raise NotImplementedError("base")
+        if self.continuation is not None:
+            return self.continuation.next(result)
 
-class EvalState(EvalStateBase):
-    def __init__(self, scope, sexp, callbackobj, callbackint):
-        EvalStateBase.__init__(self, scope, sexp)
-        self.callbackobj = callbackobj
-        self.callbackint = callbackint
-    def next(self, result):
-        if self.callbackobj is not None:
-            return self.callbackobj.got_result(self.callbackint, result)
-        return None
-
-class EvalEndState(EvalStateBase):
+class EvalEndState(EvalState):
     def __init__(self):
-        EvalStateBase.__init__(self, None, None)
+        EvalState.__init__(self, None, None, None)
         self.result = None
     def next(self, result):
         if self.result is None:
             self.result = result
         return self
 
-class EvalFunctionState(EvalStateBase):
+class EvalFunctionState(EvalState):
     def __init__(self, scope, func, args, continuation):
-        EvalStateBase.__init__(self, scope, func)
+        EvalState.__init__(self, scope, func, continuation)
         self.args = args
-        self.continuation = continuation
     def next(self, result):
         if not isinstance(result, Procedure):
             raise EvalException("expression did not evaluate to a procedure", self.sexp)
         return result.call(self.scope, self.args, self.continuation)
 
-class EvalListState(EvalStateBase):
+class EvalListState(EvalState):
     def __init__(self, scope, sexps, continuation):
-        EvalStateBase.__init__(self, scope, None)
+        EvalState.__init__(self, scope, None, continuation)
         self.sexps = sexps
         self.sexps_len = len(sexps)
-        self.continuation = continuation        
         self.current = 0
         if self.sexps_len > 0:
             self.sexp = sexps[0]
@@ -111,6 +116,11 @@ def eval_intern(state):
             return state.result
         
         sexp = state.sexp
+        if sexp is None:
+            print "# evaluating nil"
+        else:
+            print "# evaluating", sexp.unparse()
+        
         # evaluate the sexp
         if isinstance(sexp, Cell):
             # evaluate a function
