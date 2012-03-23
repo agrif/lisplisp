@@ -1,180 +1,234 @@
-from .procedure import procedure, parse_arguments
+from .procedure import builtin_full, BuiltinFull, parse_arguments
 from ..types import InvalidValue, Symbol, Cell, String, Procedure
-from ..eval import EvalException, eval, eval_list, eval_list_each
+from ..eval import EvalException, EvalState, EvalListState
 from ..scope import Scope, NameNotSet
 from ..parser import parse
 
 from pypy.rlib.jit import unroll_safe
 
-@procedure('quote')
-def l_quote(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    return req[0]
+@builtin_full('quote')
+class Quote(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, _ = parse_arguments(args, 1)
+        return continuation.next(req[0])
 
-@procedure('eval')
-def l_eval(scope, args):
-    _, _, rest = parse_arguments(args, 0, 0, True)
-    return eval_list(scope, eval_list_each(scope, rest))
+# @procedure('eval')
+# def l_eval(scope, args):
+#     _, _, rest = parse_arguments(args, 0, 0, True)
+#     return eval_list(scope, eval_list_each(scope, rest))
 
-@unroll_safe
-def _l_set(scope, args, eval_symbol):
-    _, _, rest = parse_arguments(args, 0, 0, True)
+# @unroll_safe
+# def _l_set(scope, args, eval_symbol):
+#     _, _, rest = parse_arguments(args, 0, 0, True)
     
-    if len(rest) % 2 != 0:
-        raise EvalException("set requires an even number of arguments")
+#     if len(rest) % 2 != 0:
+#         raise EvalException("set requires an even number of arguments")
     
-    i = 0
-    value = None
-    while i < len(rest):
-        symbol = rest[i]
-        orig_symbol = symbol
-        if eval_symbol:
-            symbol = eval(scope, symbol)
-        value = eval(scope, rest[i + 1])
+#     i = 0
+#     value = None
+#     while i < len(rest):
+#         symbol = rest[i]
+#         orig_symbol = symbol
+#         if eval_symbol:
+#             symbol = eval(scope, symbol)
+#         value = eval(scope, rest[i + 1])
         
+#         if not isinstance(symbol, Symbol):
+#             raise EvalException("value is not a symbol", orig_symbol)
+        
+#         scope.set(symbol.name, value)
+        
+#         i += 2
+#     return value
+
+# @procedure('set')
+# def l_set(scope, args):
+#     return _l_set(scope, args, True)
+
+# @procedure('setq')
+# def l_setq(scope, args):
+#     return _l_set(scope, args, False)
+
+@builtin_full('set-p')
+class SetP(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, _ = parse_arguments(args, 1)
+        self.continuation = continuation
+        self.scope = scope
+        self.orig_symbol = req[0]
+        return EvalState(scope, req[0], self.got_symbol, 0)
+    def got_symbol(self, unused, symbol):
         if not isinstance(symbol, Symbol):
-            raise EvalException("value is not a symbol", orig_symbol)
-        
-        scope.set(symbol.name, value)
-        
-        i += 2
-    return value
+            raise EvalException("value is not a symbol", self.orig_symbol)
+        if self.scope.is_set(symbol.name):
+            return self.continuation.next(Symbol('t'))
+        return self.continuation.next(None)
 
-@procedure('set')
-def l_set(scope, args):
-    return _l_set(scope, args, True)
-
-@procedure('setq')
-def l_setq(scope, args):
-    return _l_set(scope, args, False)
-
-@procedure('set-p')
-def l_set_p(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    symbol = eval(scope, req[0])
-    if not isinstance(symbol, Symbol):
-        raise EvalException("value is not a symbol", req[0])
-    if scope.is_set(symbol.name):
-        return Symbol('t')
-    return None
-
-@procedure('let')
-@unroll_safe
-def l_let(scope, args):
-    req, _, rest = parse_arguments(args, 1, 0, True)
-    if not isinstance(req[0], Cell):
-        raise EvalException("let bindings are not a list")
-    try:
-        bindings = req[0].to_list()
-    except InvalidValue:
-        raise EvalException("let bindings are not a list")
+# @procedure('let')
+# @unroll_safe
+# def l_let(scope, args):
+#     req, _, rest = parse_arguments(args, 1, 0, True)
+#     if not isinstance(req[0], Cell):
+#         raise EvalException("let bindings are not a list")
+#     try:
+#         bindings = req[0].to_list()
+#     except InvalidValue:
+#         raise EvalException("let bindings are not a list")
     
-    bindings_cached = {}
-    for binding in bindings:
-        orig_binding = binding
-        if not isinstance(binding, Cell):
-            raise EvalException("let binding is not a 2-list", orig_binding)
-        symbol = binding.car
-        binding = binding.cdr
-        if not isinstance(symbol, Symbol):
-            raise EvalException("let binding name is not a symbol", orig_binding)
-        if not isinstance(binding, Cell):
-            raise EvalException("let binding is not a 2-list", orig_binding)
-        value = binding.car
-        if binding.cdr is not None:
-            raise EvalException("let binding is not a 2-list", orig_binding)
-        value = eval(scope, value)
-        bindings_cached[symbol.name] = value
+#     bindings_cached = {}
+#     for binding in bindings:
+#         orig_binding = binding
+#         if not isinstance(binding, Cell):
+#             raise EvalException("let binding is not a 2-list", orig_binding)
+#         symbol = binding.car
+#         binding = binding.cdr
+#         if not isinstance(symbol, Symbol):
+#             raise EvalException("let binding name is not a symbol", orig_binding)
+#         if not isinstance(binding, Cell):
+#             raise EvalException("let binding is not a 2-list", orig_binding)
+#         value = binding.car
+#         if binding.cdr is not None:
+#             raise EvalException("let binding is not a 2-list", orig_binding)
+#         value = eval(scope, value)
+#         bindings_cached[symbol.name] = value
     
-    newscope = Scope(scope)
-    for name, val in bindings_cached.items():
-        newscope.set(name, val, local_only=True)
-    return eval_list(newscope, rest)
+#     newscope = Scope(scope)
+#     for name, val in bindings_cached.items():
+#         newscope.set(name, val, local_only=True)
+#     return eval_list(newscope, rest)
 
-@procedure('throw')
-def l_throw(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    error = eval(scope, req[0])
-    if not isinstance(error, String):
-        raise EvalException("error is not a string")
-    raise EvalException(error.data)
+# @procedure('throw')
+# def l_throw(scope, args):
+#     req, _, _ = parse_arguments(args, 1)
+#     error = eval(scope, req[0])
+#     if not isinstance(error, String):
+#         raise EvalException("error is not a string")
+#     raise EvalException(error.data)
 
-@procedure('catch')
-@unroll_safe
-def l_catch(scope, args):
-    req, _, rest = parse_arguments(args, 1, 0, True)
-    handler = eval(scope, req[0])
-    if not isinstance(handler, Procedure):
-        raise EvalException("handler is not a procedure")
-    ret = None
-    try:
-        ret = eval_list(scope, rest)
-    except EvalException, e:
-        message = e.message
-        trace = list(e.trace)
-        trace.reverse()
-        trace_lisp = None
-        for sexp in trace:
-            trace_lisp = Cell(sexp, trace_lisp)
-        args = Cell(String(message), Cell(Cell(Symbol('quote'), Cell(trace_lisp))))
-        ret = eval(scope, Cell(handler, args))
-    return ret
+# @procedure('catch')
+# @unroll_safe
+# def l_catch(scope, args):
+#     req, _, rest = parse_arguments(args, 1, 0, True)
+#     handler = eval(scope, req[0])
+#     if not isinstance(handler, Procedure):
+#         raise EvalException("handler is not a procedure")
+#     ret = None
+#     try:
+#         ret = eval_list(scope, rest)
+#     except EvalException, e:
+#         message = e.message
+#         trace = list(e.trace)
+#         trace.reverse()
+#         trace_lisp = None
+#         for sexp in trace:
+#             trace_lisp = Cell(sexp, trace_lisp)
+#         args = Cell(String(message), Cell(Cell(Symbol('quote'), Cell(trace_lisp))))
+#         ret = eval(scope, Cell(handler, args))
+#     return ret
 
-@procedure('parse')
-def l_parse(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    s = eval(scope, req[0])
-    if not isinstance(s, String):
-        raise EvalException("argument is not a string")
-    parsed = parse(s.data)
-    if isinstance(parsed, Cell) and parsed.cdr is None:
-        return parsed.car
-    return parsed
+# @procedure('parse')
+# def l_parse(scope, args):
+#     req, _, _ = parse_arguments(args, 1)
+#     s = eval(scope, req[0])
+#     if not isinstance(s, String):
+#         raise EvalException("argument is not a string")
+#     parsed = parse(s.data)
+#     if isinstance(parsed, Cell) and parsed.cdr is None:
+#         return parsed.car
+#     return parsed
 
-@procedure('unparse')
-def l_unparse(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    val = eval(scope, req[0])
-    if val is None:
-        return String('nil')
-    return String(val.unparse())
+# @procedure('unparse')
+# def l_unparse(scope, args):
+#     req, _, _ = parse_arguments(args, 1)
+#     val = eval(scope, req[0])
+#     if val is None:
+#         return String('nil')
+#     return String(val.unparse())
 
-@procedure('begin')
-def l_begin(scope, args):
-    _, _, rest = parse_arguments(args, 0, 0, True)
-    return eval_list(scope, rest)
+@builtin_full('begin')
+class Begin(BuiltinFull):
+    def call(self, scope, args, continuation):
+        _, _, rest = parse_arguments(args, 0, 0, True)
+        return EvalListState(scope, rest, continuation)
 
-@procedure('and')
-def l_and(scope, args):
-    _, _, rest = parse_arguments(args, 0, 0, True)
-    ret = Symbol('t')
-    for sexp in rest:
-        ret = eval(scope, sexp)
-        if ret is None:
-            return None
-    return ret
+@builtin_full('and')
+class And(BuiltinFull):
+    def call(self, scope, args, continuation):
+        _, _, self.args = parse_arguments(args, 0, 0, True)
+        self.num_args = len(self.args)
+        self.scope = scope
+        self.continuation = continuation
+        
+        if self.num_args == 0:
+            # default true
+            return continuation.next(Symbol('t'))
+        return EvalState(scope, self.args[0], self.got_result, 0)
+    def got_result(self, i, result):
+        # if this is the end, return
+        if i + 1 >= self.num_args:
+            return self.continuation.next(result)
+        # if even one is nil, return nil
+        if result is None:
+            return self.continuation.next(None)
+        
+        # evaluate the next one
+        return EvalState(self.scope, self.args[i + 1], self.got_result, i + 1)
 
-@procedure('or')
-def l_or(scope, args):
-    _, _, rest = parse_arguments(args, 0, 0, True)
-    for sexp in rest:
-        ret = eval(scope, sexp)
-        if ret is not None:
-            return ret
-    return None
+@builtin_full('or')
+class Or(BuiltinFull):
+    def call(self, scope, args, continuation):
+        _, _, self.args = parse_arguments(args, 0, 0, True)
+        self.num_args = len(self.args)
+        self.scope = scope
+        self.continuation = continuation
+        
+        if self.num_args == 0:
+            # default nil
+            return continuation.next(None)
+        return EvalState(scope, self.args[0], self.got_result, 0)
+    def got_result(self, i, result):
+        # if this is the end, return
+        if i + 1 >= self.num_args:
+            return self.continuation.next(result)
+        # if even one is true, return it
+        if result is not None:
+            return self.continuation.next(result)
+        
+        # evaluate the next one
+        return EvalState(self.scope, self.args[i + 1], self.got_result, i + 1)
 
-@procedure('if')
-def l_if(scope, args):
-    req, _, rest = parse_arguments(args, 2, 0, True)
-    testval = eval(scope, req[0])
-    if testval is not None:
-        return eval(scope, req[1])
-    return eval_list(scope, rest)
+@builtin_full('if')
+class If(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, rest = parse_arguments(args, 2, 0, True)
+        self.if_true = [req[1]]
+        self.if_false = rest
+        self.scope = scope
+        self.continuation = continuation
+        # evaluate the test
+        return EvalState(scope, req[0], self.got_result, 0)
+    def got_result(self, unused, result):
+        if result is None:
+            # false
+            return EvalListState(self.scope, self.if_false, self.continuation)
+        else:
+            # true
+            return EvalListState(self.scope, self.if_true, self.continuation)
 
-@procedure('while')
-def l_while(scope, args):
-    req, _, rest = parse_arguments(args, 1, 0, True)
-    test = req[0]
-    while eval(scope, test) is not None:
-        eval_list(scope, rest)
-    return None
+@builtin_full('while')
+class While(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, rest = parse_arguments(args, 1, 0, True)
+        self.test = req[0]
+        self.body = rest
+        self.scope = scope
+        self.continuation = continuation
+        return self.do_test(0, None)
+    def do_test(self, unused1, unused2):
+        return EvalState(self.scope, self.test, self.got_result, 0)
+    def got_result(self, unused, result):
+        # if it's false, just return
+        if result is None:
+            return self.continuation.next(None)
+        # do the loop otherwise
+        return EvalListState(self.scope, self.body, EvalState(None, None, self.do_test, 0))

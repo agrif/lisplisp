@@ -1,27 +1,28 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
-from ..eval import EvalException, eval, eval_list
+from ..eval import EvalException
 from ..scope import Scope
 
 from pypy.rlib.jit import unroll_safe, hint
 
+class BuiltinFull(object):
+    def call(self, scope, args, continuation):
+        raise NotImplementedError('call')
+
+class BuiltinFullProcedure(Procedure):
+    def __init__(self, cls, name):
+        Procedure.__init__(self, name)
+        self.backend = cls
+    def call(self, scope, args, continuation):
+        obj = self.backend()
+        return obj.call(scope, args, continuation)
+
 procedures = []
 
-class AutoProcedure(Procedure):
-    _immutable_fields_ = ['func']
-    def __init__(self, name, func):
-        self.func = func
-        self.name = name
-        Procedure.__init__(self, name)
-    def call(self, scope, args):
-        self = hint(self, promote=True)
-        return self.func(scope, args)
-
-def procedure(name):
-    def register(func):
-        proc = AutoProcedure(name, func)
-        procedures.append(proc)
-        return func
-    return register
+def builtin_full(name):
+    def builtin_full_intern(cls):
+        procedures.append(BuiltinFullProcedure(cls, name))
+        return cls
+    return builtin_full_intern
 
 def register(scope):
     for proc in procedures:
@@ -70,111 +71,111 @@ def parse_arguments(args, num_required, num_optional=0, use_rest=False):
     
     return (required, optional, rest)
 
-class LambdaProcedure(Procedure):
-    _immutable_fields_ = ['required', 'optional', 'rest', 'body', 'eval_args', 'eval_return']
-    def __init__(self, scope, required, optional, rest, body, eval_args=True, eval_return=False):
-        self.scope = scope
-        self.required = required
-        self.optional = optional
-        self.rest = rest
-        self.body = body
+# class LambdaProcedure(Procedure):
+#     _immutable_fields_ = ['required', 'optional', 'rest', 'body', 'eval_args', 'eval_return']
+#     def __init__(self, scope, required, optional, rest, body, eval_args=True, eval_return=False):
+#         self.scope = scope
+#         self.required = required
+#         self.optional = optional
+#         self.rest = rest
+#         self.body = body
         
-        self.eval_args = eval_args
-        self.eval_return = eval_return
+#         self.eval_args = eval_args
+#         self.eval_return = eval_return
         
-        Procedure.__init__(self, 'nil')
+#         Procedure.__init__(self, 'nil')
     
-    @unroll_safe
-    def call(self, scope, args):
-        self = hint(self, promote=True)
+#     @unroll_safe
+#     def call(self, scope, args):
+#         self = hint(self, promote=True)
         
-        reqvals, optvals, restvals = parse_arguments(args, len(self.required), len(self.optional), self.rest is not None)
-        restvals.reverse()
-        newscope = {}
+#         reqvals, optvals, restvals = parse_arguments(args, len(self.required), len(self.optional), self.rest is not None)
+#         restvals.reverse()
+#         newscope = {}
         
-        for i in range(len(self.required)):
-            if self.eval_args:
-                tmp = eval(scope, reqvals[i])
-            else:
-                tmp = reqvals[i]
-            newscope[self.required[i]] = tmp
-        for i in range(len(self.optional)):
-            if i < len(optvals):
-                if self.eval_args:
-                    tmp = eval(scope, optvals[i])
-                else:
-                    tmp = optvals[i]
-                newscope[self.optional[i]] = tmp
-            else:
-                newscope[self.optional[i]] = None
-        rest_cell = None
-        for sexp in restvals:
-            if self.eval_args:
-                tmp = eval(scope, sexp)
-            else:
-                tmp = sexp
-            rest_cell = Cell(tmp, rest_cell)
-        if self.rest is not None:
-            newscope[self.rest] = rest_cell
+#         for i in range(len(self.required)):
+#             if self.eval_args:
+#                 tmp = eval(scope, reqvals[i])
+#             else:
+#                 tmp = reqvals[i]
+#             newscope[self.required[i]] = tmp
+#         for i in range(len(self.optional)):
+#             if i < len(optvals):
+#                 if self.eval_args:
+#                     tmp = eval(scope, optvals[i])
+#                 else:
+#                     tmp = optvals[i]
+#                 newscope[self.optional[i]] = tmp
+#             else:
+#                 newscope[self.optional[i]] = None
+#         rest_cell = None
+#         for sexp in restvals:
+#             if self.eval_args:
+#                 tmp = eval(scope, sexp)
+#             else:
+#                 tmp = sexp
+#             rest_cell = Cell(tmp, rest_cell)
+#         if self.rest is not None:
+#             newscope[self.rest] = rest_cell
         
-        newscope_obj = Scope(self.scope)
-        for name, value in newscope.items():
-            newscope_obj.set_semiconstant(name, value, local_only=True)
-        ret = eval_list(newscope_obj, self.body)
+#         newscope_obj = Scope(self.scope)
+#         for name, value in newscope.items():
+#             newscope_obj.set_semiconstant(name, value, local_only=True)
+#         ret = eval_list(newscope_obj, self.body)
         
-        if self.eval_return:
-            return eval(scope, ret)
-        return ret
+#         if self.eval_return:
+#             return eval(scope, ret)
+#         return ret
 
-@unroll_safe
-def _l_lambda_macro(scope, args, eval_args, eval_return):
-    req, _, rest = parse_arguments(args, 1, 0, True)
-    if not isinstance(req[0], Cell):
-        raise EvalException("not a valid argument list")
-    try:
-        argnames = req[0].to_list()
-    except InvalidValue:
-        raise EvalException("not a valid argument list")
+# @unroll_safe
+# def _l_lambda_macro(scope, args, eval_args, eval_return):
+#     req, _, rest = parse_arguments(args, 1, 0, True)
+#     if not isinstance(req[0], Cell):
+#         raise EvalException("not a valid argument list")
+#     try:
+#         argnames = req[0].to_list()
+#     except InvalidValue:
+#         raise EvalException("not a valid argument list")
     
-    phase = 0
-    required = []
-    optional = []
-    restname = None
+#     phase = 0
+#     required = []
+#     optional = []
+#     restname = None
     
-    for sexp in argnames:
-        if not isinstance(sexp, Symbol):
-            raise EvalException("not a valid binding name", sexp)
-        name = sexp.name
+#     for sexp in argnames:
+#         if not isinstance(sexp, Symbol):
+#             raise EvalException("not a valid binding name", sexp)
+#         name = sexp.name
         
-        if name == "&optional":
-            if phase == 1:
-                raise EvalException("&optional may only appear once")
-            if phase == 2:
-                raise EvalException("&optional must appear before &rest")
-            phase = 1
-            continue
-        elif name == "&rest":
-            if phase == 2:
-                raise EvalException("&rest may only appear once")
-            phase = 2
-            continue
+#         if name == "&optional":
+#             if phase == 1:
+#                 raise EvalException("&optional may only appear once")
+#             if phase == 2:
+#                 raise EvalException("&optional must appear before &rest")
+#             phase = 1
+#             continue
+#         elif name == "&rest":
+#             if phase == 2:
+#                 raise EvalException("&rest may only appear once")
+#             phase = 2
+#             continue
         
-        if phase == 3 and restname is not None:
-            raise EvalException("there may be only one &rest binding")
+#         if phase == 3 and restname is not None:
+#             raise EvalException("there may be only one &rest binding")
         
-        if phase == 0:
-            required.append(name)
-        elif phase == 1:
-            optional.append(name)
-        else:
-            restname = name
+#         if phase == 0:
+#             required.append(name)
+#         elif phase == 1:
+#             optional.append(name)
+#         else:
+#             restname = name
         
-    return LambdaProcedure(scope, required, optional, restname, rest, eval_args, eval_return)
+#     return LambdaProcedure(scope, required, optional, restname, rest, eval_args, eval_return)
 
-@procedure('lambda')
-def l_lambda(scope, args):
-    return _l_lambda_macro(scope, args, True, False)
+# @procedure('lambda')
+# def l_lambda(scope, args):
+#     return _l_lambda_macro(scope, args, True, False)
 
-@procedure('macro')
-def l_lambda(scope, args):
-    return _l_lambda_macro(scope, args, False, True)
+# @procedure('macro')
+# def l_lambda(scope, args):
+#     return _l_lambda_macro(scope, args, False, True)
