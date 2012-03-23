@@ -1,5 +1,5 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
-from ..eval import EvalException, Continuable
+from ..eval import EvalException, Continuable, CommonContinuation, EvalState
 from ..scope import Scope
 
 from pypy.rlib.jit import unroll_safe, hint
@@ -24,6 +24,78 @@ class BuiltinFullProcedure(Procedure):
         obj = self.backend()
         return obj.call(scope, args, continuation)
 
+class BuiltinSimple(Continuable):
+    """Similar to BuiltinFull but used internally for simple builtins
+    that have no special evaluation rules."""
+    def __init__(self, func, req, opt, rest):
+        self.num_req = req
+        self.num_opt = opt
+        self.use_rest = rest
+        self.func = func
+    def call(self, scope, args, continuation):
+        req, opt, rest = parse_arguments(args, self.num_req, self.num_opt, self.use_rest)
+        self.avail_opt = len(opt)
+        self.avail_rest = len(rest)
+        self.total_args = self.num_req + self.avail_opt + self.avail_rest
+        self.req_uneval = req
+        self.opt_uneval = opt
+        self.rest_uneval = rest
+        self.scope = scope
+        self.continuation = continuation
+        
+        if self.total_args == 0:
+            # there are no arguments, skip to the end
+            return continuation.next(self.func(req, opt, rest))
+        
+        # set up eval'd destinations
+        self.req = [None] * self.num_req
+        self.opt = [None] * self.avail_opt
+        self.rest = [None] * self.avail_rest
+        
+        # find the first argument
+        if self.num_req > 0:
+            first = req[0]
+        elif self.avail_opt > 0:
+            first = opt[0]
+        else:
+            first = rest[0]
+        return EvalState(scope, first, CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        # store the result
+        if i < self.num_req:
+            self.req[i] = result
+        elif i < self.num_req + self.avail_opt:
+            self.opt[i - self.num_req] = result
+        else:
+            assert i < self.total_args
+            self.rest[i - self.num_req - self.avail_opt] = result
+        
+        # increment i, check to see if done
+        i += 1
+        if i >= self.total_args:
+            return self.continuation.next(self.func(self.req, self.opt, self.rest))
+        
+        # get the next thing to evaluate
+        if i < self.num_req:
+            next = self.req[i]
+        elif i < self.num_req + self.avail_opt:
+            next = self.opt[i - self.num_req]
+        else:
+            assert i < self.total_args
+            next = self.rest[i - self.num_req - self.avail_opt]
+        return EvalState(self.scope, next, CommonContinuation(self, i))
+
+class BuiltinSimpleProcedure(Procedure):
+    def __init__(self, func, req, opt, rest, name):
+        Procedure.__init__(self, name)
+        self.func = func
+        self.req = req
+        self.opt = opt
+        self.rest = rest
+    def call(self, scope, args, continuation):
+        obj = BuiltinSimple(self.func, self.req, self.opt, self.rest)
+        return obj.call(scope, args, continuation)
+
 procedures = []
 
 def builtin_full(name):
@@ -32,12 +104,19 @@ def builtin_full(name):
         return cls
     return builtin_full_intern
 
+def builtin(name, req=0, opt=0, rest=False):
+    def builtin_intern(func):
+        proc = BuiltinSimpleProcedure(func, req, opt, rest, name)
+        procedures.append(proc)
+        return func
+    return builtin_intern
+
 def register(scope):
     for proc in procedures:
         scope.set_semiconstant(proc.name, proc)
 
 @unroll_safe
-def parse_arguments(args, num_required, num_optional=0, use_rest=False):
+def parse_arguments(args, num_required=0, num_optional=0, use_rest=False):
     required = []
     optional = []
     rest = []

@@ -1,4 +1,4 @@
-from .procedure import builtin_full, BuiltinFull, parse_arguments
+from .procedure import builtin_full, builtin, BuiltinFull, parse_arguments
 from ..types import InvalidValue, Symbol, Cell, String, Procedure
 from ..eval import EvalException, CommonContinuation, EvalState, EvalListState
 from ..scope import Scope, NameNotSet
@@ -12,10 +12,27 @@ class Quote(BuiltinFull):
         req, _, _ = parse_arguments(args, 1)
         return continuation.next(req[0])
 
-# @procedure('eval')
-# def l_eval(scope, args):
-#     _, _, rest = parse_arguments(args, 0, 0, True)
-#     return eval_list(scope, eval_list_each(scope, rest))
+@builtin_full('eval')
+class Eval(BuiltinFull):
+    def call(self, scope, args, continuation):
+        _, _, rest = parse_arguments(args, 0, 0, True)
+        self.length = len(rest)
+        self.unevaluated = rest
+        self.evaluated = [None] * self.length
+        self.scope = scope
+        self.continuation = continuation
+        
+        if self.length == 0:
+            return self.continuation.next(None)
+        return EvalState(scope, self.unevaluated[0], CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        self.evaluated[i] = result
+        
+        if i + 1 >= self.length:
+            # this is the end, now evaluate them all again
+            return EvalListState(self.scope, self.evaluated, self.continuation)
+        # keep going
+        return EvalState(self.scope, self.unevaluated[i + 1], CommonContinuation(self, i + 1))
 
 # @unroll_safe
 # def _l_set(scope, args, eval_symbol):
@@ -126,24 +143,21 @@ class SetP(BuiltinFull):
 #         ret = eval(scope, Cell(handler, args))
 #     return ret
 
-# @procedure('parse')
-# def l_parse(scope, args):
-#     req, _, _ = parse_arguments(args, 1)
-#     s = eval(scope, req[0])
-#     if not isinstance(s, String):
-#         raise EvalException("argument is not a string")
-#     parsed = parse(s.data)
-#     if isinstance(parsed, Cell) and parsed.cdr is None:
-#         return parsed.car
-#     return parsed
+@builtin('parse', 1)
+def l_parse(req, opt, rest):
+    s = req[0]
+    if not isinstance(s, String):
+        raise EvalException("argument is not a string")
+    parsed = parse(s.data)
+    if isinstance(parsed, Cell) and parsed.cdr is None:
+        return parsed.car
+    return parsed
 
-# @procedure('unparse')
-# def l_unparse(scope, args):
-#     req, _, _ = parse_arguments(args, 1)
-#     val = eval(scope, req[0])
-#     if val is None:
-#         return String('nil')
-#     return String(val.unparse())
+@builtin('unparse', 1)
+def l_unparse(req, opt, rest):
+    if req[0] is None:
+        return String('nil')
+    return String(req[0].unparse())
 
 @builtin_full('begin')
 class Begin(BuiltinFull):
