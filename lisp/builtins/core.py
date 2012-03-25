@@ -118,38 +118,63 @@ class SetP(BuiltinFull):
             return self.continuation.next(Symbol('t'))
         return self.continuation.next(None)
 
-# @procedure('let')
-# @unroll_safe
-# def l_let(scope, args):
-#     req, _, rest = parse_arguments(args, 1, 0, True)
-#     if not isinstance(req[0], Cell):
-#         raise EvalException("let bindings are not a list")
-#     try:
-#         bindings = req[0].to_list()
-#     except InvalidValue:
-#         raise EvalException("let bindings are not a list")
-    
-#     bindings_cached = {}
-#     for binding in bindings:
-#         orig_binding = binding
-#         if not isinstance(binding, Cell):
-#             raise EvalException("let binding is not a 2-list", orig_binding)
-#         symbol = binding.car
-#         binding = binding.cdr
-#         if not isinstance(symbol, Symbol):
-#             raise EvalException("let binding name is not a symbol", orig_binding)
-#         if not isinstance(binding, Cell):
-#             raise EvalException("let binding is not a 2-list", orig_binding)
-#         value = binding.car
-#         if binding.cdr is not None:
-#             raise EvalException("let binding is not a 2-list", orig_binding)
-#         value = eval(scope, value)
-#         bindings_cached[symbol.name] = value
-    
-#     newscope = Scope(scope)
-#     for name, val in bindings_cached.items():
-#         newscope.set(name, val, local_only=True)
-#     return eval_list(newscope, rest)
+@builtin_full('let')
+class Let(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, rest = parse_arguments(args, 1, 0, True)
+        
+        self.scope = scope
+        self.continuation = continuation
+        self.body = rest
+        
+        if not isinstance(req[0], Cell):
+            raise EvalException("let bindings are not a list")
+        try:
+            bindings = req[0].to_list()
+        except InvalidValue:
+            raise EvalException("let bindings are not a list")
+        
+        self.num_bindings = len(bindings)
+        self.symbols = [""] * self.num_bindings
+        self.unevaled = [None] * self.num_bindings
+        self.evaled = [None] * self.num_bindings
+        i = 0
+        while i < self.num_bindings:
+            binding = bindings[i]
+            if isinstance(binding, Symbol):
+                self.symbols[i] = binding.name
+            elif isinstance(binding, Cell):
+                try:
+                    binding_list = binding.to_list()
+                except InvalidValue:
+                    raise EvalException("let binding is not a two-cell", binding)
+                if len(binding_list) != 2:
+                    raise EvalException("let binding is not a two-cell", binding)
+                symbol = binding_list[0]
+                expr = binding_list[1]
+                if not isinstance(symbol, Symbol):
+                    raise EvalException("let binding name is not a symbol", binding)
+                self.symbols[i] = symbol.name
+                self.unevaled[i] = expr
+            else:
+                raise EvalException("let binding is not a two-cell or a symbol", binding)
+            i += 1
+        
+        # start the evaluation
+        return EvalState(scope, self.unevaled[0], CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        self.evaled[i] = result
+        if i + 1 >= self.num_bindings:
+            # we're done
+            newscope = Scope(self.scope)
+            j = 0
+            while j < self.num_bindings:
+                newscope.set(self.symbols[j], self.evaled[j], local_only=True)
+                j += 1
+            return EvalListState(newscope, self.body, self.continuation)
+        
+        # do the next one
+        return EvalState(self.scope, self.unevaled[i + 1], CommonContinuation(self, i + 1))
 
 # @procedure('throw')
 # def l_throw(scope, args):
