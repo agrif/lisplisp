@@ -1,6 +1,6 @@
-from .procedure import procedure, parse_arguments
+from .procedure import builtin, parse_arguments, GenericContinuable
 from ..types import BoxedType, Cell, Symbol, String, Number, Integer, Float, Procedure
-from ..eval import EvalException, eval
+from ..eval import EvalException
 
 import pypy.rlib.clibffi as ffi
 from pypy.rpython.lltypesystem import rffi, lltype
@@ -89,27 +89,23 @@ symbol_to_type = {}
 for el in typelist:
     symbol_to_type[el.name] = el
 
-class FFIProcedure(Procedure):
-    def __init__(self, lib, func, name, argtypes, restype):
-        self.lib = lib
-        self.ffi_func = func
+class FFIContinuable(GenericContinuable):
+    def __init__(self, argtypes, restype, ffi_func):
+        GenericContinuable.__init__(self, len(argtypes), 0, False, True, False, False)
         self.argtypes = argtypes
         self.restype = restype
-        Procedure.__init__(self, lib.name + '::' + name)
-    def call(self, scope, args):
-        req, _, _ = parse_arguments(args, len(self.argtypes))
-
+        self.ffi_func = ffi_func
+    def call_backend(self, req, opt, rest):
         i = 0
         to_free = []
         while i < len(self.argtypes):
-            sexp = req[i]
+            val = req[i]
             typ = self.argtypes[i]()
-            val = eval(scope, sexp)
             if not typ.check_lisp_type(val):
                 self.ffi_func._clean_args()
                 for free_obj in to_free:
                     free_obj.free_arg()
-                raise EvalException("argument is incorrect type", sexp)
+                raise EvalException("argument is incorrect type")
             typ.push_arg(self.ffi_func, val)
             to_free.append(typ)
             i += 1
@@ -118,6 +114,17 @@ class FFIProcedure(Procedure):
         for free_obj in to_free:
             free_obj.free_arg()
         return ret
+
+class FFIProcedure(Procedure):
+    def __init__(self, lib, func, name, argtypes, restype):
+        self.lib = lib
+        self.ffi_func = func
+        self.argtypes = argtypes
+        self.restype = restype
+        Procedure.__init__(self, lib.name + '::' + name)
+    def call(self, scope, args, continuation):
+        obj = FFIContinuable(self.argtypes, self.restype, self.ffi_func)
+        return obj.call(scope, args, continuation)
 
 class FFILibrary(BoxedType):
     def __init__(self, name):
@@ -133,10 +140,9 @@ class FFILibrary(BoxedType):
         func = self.lib.getpointer(name, ffi_argtypes, restype.ffi_type)
         return FFIProcedure(self, func, name, argtypes, restype)
 
-@procedure('ffi-library')
-def l_ffi_library(scope, args):
-    req, _, _ = parse_arguments(args, 1)
-    name = eval(scope, req[0])
+@builtin('ffi-library', 1)
+def l_ffi_library(req, opt, rest):
+    name = req[0]
     if not isinstance(name, String):
         raise EvalException("library name is not a string")
     try:
@@ -144,21 +150,19 @@ def l_ffi_library(scope, args):
     except DLOpenError:
         raise EvalException("library could not be loaded")
 
-@procedure('ffi-procedure')
-def l_ffi_procedure(scope, args):
-    req, opt, rest = parse_arguments(args, 2, 1, True)
-    
-    lib = eval(scope, req[0])
+@builtin('ffi-procedure', 2, 1, True)
+def l_ffi_procedure(req, opt, rest):
+    lib = req[0]
     if not isinstance(lib, FFILibrary):
         raise EvalException("first argument is not a library")
     
-    name = eval(scope, req[1])
+    name = req[1]
     if not isinstance(name, String):
         raise EvalException("procedure name is not a string")
     name = name.data
     
     if len(opt) > 0:
-        restype = eval(scope, opt[0])
+        restype = opt[0]
         if not isinstance(restype, Symbol):
             raise EvalException("result type is not a symbol")
         restype = restype.name
@@ -166,10 +170,9 @@ def l_ffi_procedure(scope, args):
         restype = "void"
     
     argtypes = []
-    for sexp in rest:
-        typ = eval(scope, sexp)
+    for typ in rest:
         if not isinstance(typ, Symbol):
-            raise EvalException("argument type is not a symbol", sexp)
+            raise EvalException("argument type is not a symbol")
         argtypes.append(typ.name)
     
     try:

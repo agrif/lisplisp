@@ -5,7 +5,7 @@ import core
 import math
 import types
 import io
-#import ffi
+import ffi
 
 def register(scope):
     # idempotent symbols
