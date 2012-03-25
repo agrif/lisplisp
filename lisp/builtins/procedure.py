@@ -48,7 +48,7 @@ class GenericContinuable(Continuable):
             return self.call_backend_extra(req, opt, rest, subcont)
         else:
             if self.eval_return:
-                return EvalState(self.scope, self.call_backend(req, opt, rest), CommonContinuation(self, self.total_args + 1))
+                return EvalState(self.scope, self.call_backend(req, opt, rest), self.continuation)
             else:
                 return self.continuation.next(self.call_backend(req, opt, rest))
     
@@ -82,9 +82,6 @@ class GenericContinuable(Continuable):
             first = rest[0]
         return EvalState(scope, first, CommonContinuation(self, 0))
     def got_result(self, i, result):
-        # handle the eval-result case first
-        if i == self.total_args + 1:
-            return self.continuation.next(result)
         # handle the extra return value case
         if i == self.total_args:
             assert self.eval_return
@@ -308,3 +305,26 @@ class Lambda(BuiltinFull):
     def call(self, scope, args, continuation):
         proc = _l_lambda_macro(scope, args, False, True)
         return continuation.next(proc)
+
+class LispContinuation(Procedure):
+    def __init__(self, continuation):
+        Procedure.__init__(self, "continuation")
+        self.wrapped_continuation = continuation
+    def call(self, scope, args, continuation):
+        req, _, _ = parse_arguments(args, 1)
+        # evaluate the return value, then use our continuation
+        return EvalState(scope, req[0], self.wrapped_continuation)
+
+@builtin_full('call/cc')
+class CallCC(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, _ = parse_arguments(args, 1)        
+        self.scope = scope
+        self.continuation = continuation
+        # eval the argument to get a procedure
+        return EvalState(scope, req[0], CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        if not isinstance(result, Procedure):
+            raise EvalException("provided value is not a procedure")
+        curcont = LispContinuation(self.continuation)
+        return result.call(self.scope, Cell(curcont), self.continuation)

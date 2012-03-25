@@ -112,28 +112,30 @@ class EvalFunctionState(EvalState):
             raise EvalException("expression did not evaluate to a procedure", self.sexp)
         return result.call(self.scope, self.args, self.continuation)
 
-class EvalListState(EvalState):
-    """A useful evaluation state for evaluating a list of
-    expressions. The result of the final expression is provided to the
-    given continuation."""
-    def __init__(self, scope, sexps, continuation):
-        EvalState.__init__(self, scope, None, continuation)
-        self.sexps = sexps
-        self.sexps_len = len(sexps)
-        self.current = 0
-        if self.sexps_len > 0:
-            self.sexp = sexps[0]
-        else:
-            self.sexp = None
+class EvalListStateHelper(Continuation):
+    def __init__(self, state):
+        self.state = state
     def next(self, result):
-        if not self.current + 1 < self.sexps_len:
-            # this is the last one
-            return self.continuation.next(result)
-        
-        # move on to the next sexp
-        self.current += 1
-        self.sexp = self.sexps[self.current]
-        return self
+        return self.state
+
+# used to be a class, sorry for the name
+def EvalListState(scope, sexps, continuation):
+    """A useful helper for constructing a whole chain of evaluation
+    states. The value of the last expression is provided to the
+    given continuation."""
+    
+    if len(sexps) == 0:
+        return continuation.next(None)
+    
+    body = list(sexps)
+    body.reverse()
+    
+    ret = continuation
+    for sexp in body:
+        if ret is not continuation:
+            ret = EvalListStateHelper(ret)
+        ret = EvalState(scope, sexp, ret)
+    return ret
 
 @unroll_safe
 def _eval_intern(state):
@@ -143,7 +145,7 @@ def _eval_intern(state):
         if isinstance(state, EvalEndState):
             return state.result
         
-        sexp = state.sexp
+        sexp = state.sexp        
         # evaluate the sexp
         if isinstance(sexp, Cell):
             # evaluate a function
