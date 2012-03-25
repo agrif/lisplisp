@@ -1,5 +1,5 @@
 from ..types import InvalidValue, Procedure, Cell, Symbol
-from ..eval import EvalException, Continuable, CommonContinuation, EvalState
+from ..eval import EvalException, Continuable, CommonContinuation, EvalState, EvalListState
 from ..scope import Scope
 
 from pypy.rlib.jit import unroll_safe, hint
@@ -24,14 +24,34 @@ class BuiltinFullProcedure(Procedure):
         obj = self.backend()
         return obj.call(scope, args, continuation)
 
-class BuiltinSimple(Continuable):
-    """Similar to BuiltinFull but used internally for simple builtins
-    that have no special evaluation rules."""
-    def __init__(self, func, req, opt, rest):
+class GenericContinuable(Continuable):
+    """A generic continuable that evaluates (or doesn't) all
+    arguments, calls a backend function at self.call_backend, and then
+    evaluates (or doesn't) the result. If you set extra to True, call_backend_extra is called instead, which should return an eval state."""
+    def __init__(self, req, opt, rest, eval_args, eval_return, extra):
         self.num_req = req
         self.num_opt = opt
         self.use_rest = rest
-        self.func = func
+        self.eval_args = eval_args
+        self.eval_return = eval_return
+        self.use_extra = extra
+    def call_backend(self, req, opt, rest):
+        raise NotImplementedError("call_backend")
+    def call_backend_extra(self, req, opt, rest, continuation):
+        raise NotImplementedError("call_backend_extra")
+    def _call_helper(self, req, opt, rest):
+        if self.use_extra:
+            if self.eval_return:
+                subcont = CommonContinuation(self, self.total_args)
+            else:
+                subcont = self.continuation
+            return self.call_backend_extra(req, opt, rest, subcont)
+        else:
+            if self.eval_return:
+                return EvalState(self.scope, self.call_backend(req, opt, rest), CommonContinuation(self, self.total_args + 1))
+            else:
+                return self.continuation.next(self.call_backend(req, opt, rest))
+    
     def call(self, scope, args, continuation):
         req, opt, rest = parse_arguments(args, self.num_req, self.num_opt, self.use_rest)
         self.avail_opt = len(opt)
@@ -43,9 +63,10 @@ class BuiltinSimple(Continuable):
         self.scope = scope
         self.continuation = continuation
         
-        if self.total_args == 0:
-            # there are no arguments, skip to the end
-            return continuation.next(self.func(req, opt, rest))
+        if self.total_args == 0 or not self.eval_args:
+            # there are no arguments, or they don't need eval'd,
+            # skip to the end
+            return self._call_helper(req, opt, rest)
         
         # set up eval'd destinations
         self.req = [None] * self.num_req
@@ -61,6 +82,15 @@ class BuiltinSimple(Continuable):
             first = rest[0]
         return EvalState(scope, first, CommonContinuation(self, 0))
     def got_result(self, i, result):
+        # handle the eval-result case first
+        if i == self.total_args + 1:
+            return self.continuation.next(result)
+        # handle the extra return value case
+        if i == self.total_args:
+            assert self.eval_return
+            return EvalState(self.scope, result, self.continuation)
+        
+        # everything after this is evaluating an argument
         # store the result
         if i < self.num_req:
             self.req[i] = result
@@ -73,17 +103,27 @@ class BuiltinSimple(Continuable):
         # increment i, check to see if done
         i += 1
         if i >= self.total_args:
-            return self.continuation.next(self.func(self.req, self.opt, self.rest))
+            return self._call_helper(self.req, self.opt, self.rest)
         
         # get the next thing to evaluate
         if i < self.num_req:
-            next = self.req[i]
+            next = self.req_uneval[i]
         elif i < self.num_req + self.avail_opt:
-            next = self.opt[i - self.num_req]
+            next = self.opt_uneval[i - self.num_req]
         else:
             assert i < self.total_args
-            next = self.rest[i - self.num_req - self.avail_opt]
+            next = self.rest_uneval[i - self.num_req - self.avail_opt]
         return EvalState(self.scope, next, CommonContinuation(self, i))
+
+class BuiltinSimple(GenericContinuable):
+    """Similar to BuiltinFull but used internally for simple builtins
+    that have no special evaluation rules. Evaluates all arguments,
+    then returns the result unevaled."""
+    def __init__(self, func, req, opt, rest):
+        GenericContinuable.__init__(self, req, opt, rest, True, False, False)
+        self.func = func
+    def call_backend(self, req, opt, rest):
+        return self.func(req, opt, rest)
 
 class BuiltinSimpleProcedure(Procedure):
     def __init__(self, func, req, opt, rest, name):
@@ -158,111 +198,113 @@ def parse_arguments(args, num_required=0, num_optional=0, use_rest=False):
     
     return (required, optional, rest)
 
-# class LambdaProcedure(Procedure):
-#     _immutable_fields_ = ['required', 'optional', 'rest', 'body', 'eval_args', 'eval_return']
-#     def __init__(self, scope, required, optional, rest, body, eval_args=True, eval_return=False):
-#         self.scope = scope
-#         self.required = required
-#         self.optional = optional
-#         self.rest = rest
-#         self.body = body
+class LambdaContinuable(GenericContinuable):
+    """Similar to BuiltinFull but used internally for simple builtins
+    that have no special evaluation rules. Evaluates all arguments,
+    then returns the result unevaled."""
+    def __init__(self, scope, body, req_names, opt_names, rest_name, eval_args, eval_return):
+        GenericContinuable.__init__(self, len(req_names), len(opt_names), rest_name is not None, eval_args, eval_return, True)
+        self.scope = scope
+        self.body = body
+        self.req_names = req_names
+        self.opt_names = opt_names
+        self.rest_name = rest_name
+    def call_backend_extra(self, req, opt, rest, continuation):
+        num_req = len(req)
+        num_opt = len(opt)
+        num_opt_max = len(self.opt_names)
+        assert len(self.req_names) == num_req
+        assert num_opt_max >= num_opt
+        newscope = Scope(self.scope)
         
-#         self.eval_args = eval_args
-#         self.eval_return = eval_return
+        i = 0
+        while i < num_req:
+            newscope.set(self.req_names[i], req[i])
+            i += 1
+        i = 0
+        while i < num_opt:
+            newscope.set(self.opt_names[i], opt[i])
+            i += 1
+        while i < num_opt_max:
+            newscope.set(self.opt_names[i], None)
+            i += 1
+        if self.rest_name is not None:
+            rest_dup = list(rest)
+            rest_dup.reverse()
+            rest_lisp = None
+            for sexp in rest_dup:
+                rest_lisp = Cell(sexp, rest_lisp)
+            newscope.set(self.rest_name, rest_lisp)
         
-#         Procedure.__init__(self, 'nil')
-    
-#     @unroll_safe
-#     def call(self, scope, args):
-#         self = hint(self, promote=True)
-        
-#         reqvals, optvals, restvals = parse_arguments(args, len(self.required), len(self.optional), self.rest is not None)
-#         restvals.reverse()
-#         newscope = {}
-        
-#         for i in range(len(self.required)):
-#             if self.eval_args:
-#                 tmp = eval(scope, reqvals[i])
-#             else:
-#                 tmp = reqvals[i]
-#             newscope[self.required[i]] = tmp
-#         for i in range(len(self.optional)):
-#             if i < len(optvals):
-#                 if self.eval_args:
-#                     tmp = eval(scope, optvals[i])
-#                 else:
-#                     tmp = optvals[i]
-#                 newscope[self.optional[i]] = tmp
-#             else:
-#                 newscope[self.optional[i]] = None
-#         rest_cell = None
-#         for sexp in restvals:
-#             if self.eval_args:
-#                 tmp = eval(scope, sexp)
-#             else:
-#                 tmp = sexp
-#             rest_cell = Cell(tmp, rest_cell)
-#         if self.rest is not None:
-#             newscope[self.rest] = rest_cell
-        
-#         newscope_obj = Scope(self.scope)
-#         for name, value in newscope.items():
-#             newscope_obj.set_semiconstant(name, value, local_only=True)
-#         ret = eval_list(newscope_obj, self.body)
-        
-#         if self.eval_return:
-#             return eval(scope, ret)
-#         return ret
+        return EvalListState(newscope, self.body, continuation)
 
-# @unroll_safe
-# def _l_lambda_macro(scope, args, eval_args, eval_return):
-#     req, _, rest = parse_arguments(args, 1, 0, True)
-#     if not isinstance(req[0], Cell):
-#         raise EvalException("not a valid argument list")
-#     try:
-#         argnames = req[0].to_list()
-#     except InvalidValue:
-#         raise EvalException("not a valid argument list")
-    
-#     phase = 0
-#     required = []
-#     optional = []
-#     restname = None
-    
-#     for sexp in argnames:
-#         if not isinstance(sexp, Symbol):
-#             raise EvalException("not a valid binding name", sexp)
-#         name = sexp.name
-        
-#         if name == "&optional":
-#             if phase == 1:
-#                 raise EvalException("&optional may only appear once")
-#             if phase == 2:
-#                 raise EvalException("&optional must appear before &rest")
-#             phase = 1
-#             continue
-#         elif name == "&rest":
-#             if phase == 2:
-#                 raise EvalException("&rest may only appear once")
-#             phase = 2
-#             continue
-        
-#         if phase == 3 and restname is not None:
-#             raise EvalException("there may be only one &rest binding")
-        
-#         if phase == 0:
-#             required.append(name)
-#         elif phase == 1:
-#             optional.append(name)
-#         else:
-#             restname = name
-        
-#     return LambdaProcedure(scope, required, optional, restname, rest, eval_args, eval_return)
+class LambdaProcedure(Procedure):
+    def __init__(self, scope, body, req_names, opt_names, rest_name, eval_args, eval_return, name):
+        Procedure.__init__(self, name)
+        self.scope = scope
+        self.body = body
+        self.req_names = req_names
+        self.opt_names = opt_names
+        self.rest_name = rest_name
+        self.eval_args = eval_args
+        self.eval_return = eval_return
+    def call(self, scope, args, continuation):
+        obj = LambdaContinuable(self.scope, self.body, self.req_names, self.opt_names, self.rest_name, self.eval_args, self.eval_return)
+        return obj.call(scope, args, continuation)
 
-# @procedure('lambda')
-# def l_lambda(scope, args):
-#     return _l_lambda_macro(scope, args, True, False)
+@unroll_safe
+def _l_lambda_macro(scope, args, eval_args, eval_return):
+    req, _, rest = parse_arguments(args, 1, 0, True)
+    if not isinstance(req[0], Cell):
+        raise EvalException("not a valid argument list")
+    try:
+        argnames = req[0].to_list()
+    except InvalidValue:
+        raise EvalException("not a valid argument list")
+    
+    phase = 0
+    required = []
+    optional = []
+    restname = None
+    
+    for sexp in argnames:
+        if not isinstance(sexp, Symbol):
+            raise EvalException("not a valid binding name", sexp)
+        name = sexp.name
+        
+        if name == "&optional":
+            if phase == 1:
+                raise EvalException("&optional may only appear once")
+            if phase == 2:
+                raise EvalException("&optional must appear before &rest")
+            phase = 1
+            continue
+        elif name == "&rest":
+            if phase == 2:
+                raise EvalException("&rest may only appear once")
+            phase = 2
+            continue
+        
+        if phase == 3 and restname is not None:
+            raise EvalException("there may be only one &rest binding")
+        
+        if phase == 0:
+            required.append(name)
+        elif phase == 1:
+            optional.append(name)
+        else:
+            restname = name
+    
+    return LambdaProcedure(scope, rest, required, optional, restname, eval_args, eval_return, "unknown")
 
-# @procedure('macro')
-# def l_lambda(scope, args):
-#     return _l_lambda_macro(scope, args, False, True)
+@builtin_full('lambda')
+class Lambda(BuiltinFull):
+    def call(self, scope, args, continuation):
+        proc = _l_lambda_macro(scope, args, True, False)
+        return continuation.next(proc)
+
+@builtin_full('macro')
+class Lambda(BuiltinFull):
+    def call(self, scope, args, continuation):
+        proc = _l_lambda_macro(scope, args, False, True)
+        return continuation.next(proc)
