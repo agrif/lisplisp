@@ -176,13 +176,12 @@ class Let(BuiltinFull):
         # do the next one
         return EvalState(self.scope, self.unevaled[i + 1], CommonContinuation(self, i + 1))
 
-# @procedure('throw')
-# def l_throw(scope, args):
-#     req, _, _ = parse_arguments(args, 1)
-#     error = eval(scope, req[0])
-#     if not isinstance(error, String):
-#         raise EvalException("error is not a string")
-#     raise EvalException(error.data)
+@builtin('throw', 1)
+def l_throw(req, opt, rest):
+    error = req[0]
+    if not isinstance(error, String):
+        raise EvalException("error is not a string")
+    raise EvalException(error.data)
 
 # @procedure('catch')
 # @unroll_safe
