@@ -2,9 +2,9 @@ from .procedure import register as register_procedures
 from ..types import Symbol
 
 import core
-#import math
-#import types
-#import io
+import math
+import types
+import io
 #import ffi
 
 def register(scope):

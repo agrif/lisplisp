@@ -32,11 +32,7 @@ def entry_point(argv):
     
     try:
         for i in range(len(filenames)):
-            val = evaluate_file(scope, filenames[i])
-            if val is None:
-                print "nil"
-            else:
-                print val.unparse()
+            evaluate_file(scope, filenames[i])
     except EvalException, e:
         e.pretty_print()
         return 1

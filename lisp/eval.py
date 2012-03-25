@@ -144,11 +144,6 @@ def _eval_intern(state):
             return state.result
         
         sexp = state.sexp
-        if sexp is None:
-            print "# evaluating nil"
-        else:
-            print "# evaluating", sexp.unparse()
-        
         # evaluate the sexp
         if isinstance(sexp, Cell):
             # evaluate a function
