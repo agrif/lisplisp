@@ -201,7 +201,7 @@ class LambdaContinuable(GenericContinuable):
     then returns the result unevaled."""
     def __init__(self, scope, body, req_names, opt_names, rest_name, eval_args, eval_return):
         GenericContinuable.__init__(self, len(req_names), len(opt_names), rest_name is not None, eval_args, eval_return, True)
-        self.scope = scope
+        self.closed_scope = scope
         self.body = body
         self.req_names = req_names
         self.opt_names = opt_names
@@ -212,18 +212,18 @@ class LambdaContinuable(GenericContinuable):
         num_opt_max = len(self.opt_names)
         assert len(self.req_names) == num_req
         assert num_opt_max >= num_opt
-        newscope = Scope(self.scope)
+        newscope = Scope(self.closed_scope)
         
         i = 0
         while i < num_req:
-            newscope.set(self.req_names[i], req[i])
+            newscope.set(self.req_names[i], req[i], local_only=True)
             i += 1
         i = 0
         while i < num_opt:
-            newscope.set(self.opt_names[i], opt[i])
+            newscope.set(self.opt_names[i], opt[i], local_only=True)
             i += 1
         while i < num_opt_max:
-            newscope.set(self.opt_names[i], None)
+            newscope.set(self.opt_names[i], None, local_only=True)
             i += 1
         if self.rest_name is not None:
             rest_dup = list(rest)
@@ -231,7 +231,7 @@ class LambdaContinuable(GenericContinuable):
             rest_lisp = None
             for sexp in rest_dup:
                 rest_lisp = Cell(sexp, rest_lisp)
-            newscope.set(self.rest_name, rest_lisp)
+            newscope.set(self.rest_name, rest_lisp, local_only=True)
         
         return EvalListState(newscope, self.body, continuation)
 
@@ -252,12 +252,15 @@ class LambdaProcedure(Procedure):
 @unroll_safe
 def _l_lambda_macro(scope, args, eval_args, eval_return):
     req, _, rest = parse_arguments(args, 1, 0, True)
-    if not isinstance(req[0], Cell):
-        raise EvalException("not a valid argument list")
-    try:
-        argnames = req[0].to_list()
-    except InvalidValue:
-        raise EvalException("not a valid argument list")
+    if req[0] is None:
+        argnames = []
+    else:
+        if not isinstance(req[0], Cell):
+            raise EvalException("not a valid argument list")
+        try:
+            argnames = req[0].to_list()
+        except InvalidValue:
+            raise EvalException("not a valid argument list")
     
     phase = 0
     required = []
