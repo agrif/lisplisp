@@ -34,37 +34,74 @@ class Eval(BuiltinFull):
         # keep going
         return EvalState(self.scope, self.unevaluated[i + 1], CommonContinuation(self, i + 1))
 
-# @unroll_safe
-# def _l_set(scope, args, eval_symbol):
-#     _, _, rest = parse_arguments(args, 0, 0, True)
-    
-#     if len(rest) % 2 != 0:
-#         raise EvalException("set requires an even number of arguments")
-    
-#     i = 0
-#     value = None
-#     while i < len(rest):
-#         symbol = rest[i]
-#         orig_symbol = symbol
-#         if eval_symbol:
-#             symbol = eval(scope, symbol)
-#         value = eval(scope, rest[i + 1])
+@builtin_full('set')
+class Set(BuiltinFull):
+    def call(self, scope, args, continuation):
+        req, _, _ = parse_arguments(args, 2)
         
-#         if not isinstance(symbol, Symbol):
-#             raise EvalException("value is not a symbol", orig_symbol)
+        self.scope = scope
+        self.expression = req[1]
+        self.symbol = None
+        self.continuation = continuation
+        return EvalState(scope, req[0], CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        if i == 0:
+            # the symbol
+            self.symbol = result
+            return EvalState(self.scope, self.expression, CommonContinuation(self, 1))
         
-#         scope.set(symbol.name, value)
-        
-#         i += 2
-#     return value
+        # the expression, now we're done
+        symbol = self.symbol
+        if not isinstance(symbol, Symbol):
+            raise EvalException("binding name is not a symbol")
+        self.scope.set(symbol.name, result)
+        return self.continuation.next(result)
 
-# @procedure('set')
-# def l_set(scope, args):
-#     return _l_set(scope, args, True)
-
-# @procedure('setq')
-# def l_setq(scope, args):
-#     return _l_set(scope, args, False)
+@builtin_full('setq')
+class SetQ(BuiltinFull):
+    def call(self, scope, args, continuation):
+        _, _, rest = parse_arguments(args, 0, 0, True)
+        
+        if len(rest) % 2 != 0:
+            raise EvalException("setq takes an even number of arguments")
+        
+        self.scope = scope
+        self.continuation = continuation
+        
+        num_args = len(rest)
+        self.num_bindings = num_args / 2
+        if num_args == 0:
+            return continuation.next(None)
+        
+        self.symbols = [""] * self.num_bindings
+        self.unevaled = [None] * self.num_bindings
+        self.evaled = [None] * self.num_bindings
+        i = 0
+        while i < num_args:
+            arg = rest[i]
+            if i % 2 == 0:
+                if not isinstance(arg, Symbol):
+                    raise EvalException("binding name is not a symbol")
+                self.symbols[i / 2] = arg.name
+            else:
+                self.unevaled[i / 2] = arg
+            i += 1
+        
+        return EvalState(scope, self.unevaled[0], CommonContinuation(self, 0))
+    def got_result(self, i, result):
+        self.evaled[i] = result
+        if i + 1 >= self.num_bindings:
+            # we're done
+            j = 0
+            ret = None
+            while j < self.num_bindings:
+                ret = self.evaled[j]
+                self.scope.set(self.symbols[j], ret)
+                j += 1
+            return self.continuation.next(ret)
+        
+        # do the next one
+        return EvalState(self.scope, self.unevaled[i + 1], CommonContinuation(self, i + 1))
 
 @builtin_full('set-p')
 class SetP(BuiltinFull):
